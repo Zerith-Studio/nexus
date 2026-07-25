@@ -1,3 +1,4 @@
+import { withTimeout } from "../resilience/timeout.js";
 import type { EmailProvider, SendEmailParams } from "./types.js";
 
 export interface ResendEmailProviderOptions {
@@ -7,6 +8,12 @@ export interface ResendEmailProviderOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   baseUrl?: string;
+  /** Max time to wait for a response (headers/status), matching
+   * OpenAIChatProvider's connectTimeoutMs — a hung connection would
+   * otherwise leave a BullMQ job (e.g. sendEmailProcessor) stuck until
+   * its own, much coarser job timeout finally kills it. Applies per
+   * attempt, so a retry gets its own fresh budget. */
+  connectTimeoutMs?: number;
   /** Injectable for tests — never hits the real Resend API in the test suite. */
   fetchImpl?: typeof fetch;
   sleepImpl?: (ms: number) => Promise<void>;
@@ -20,9 +27,9 @@ function isRetryableStatus(status: number): boolean {
  * Resend implementation of EmailProvider. Raw fetch against Resend's REST
  * API rather than their SDK — matches this package's zero-runtime-deps
  * convention (see embeddings/openai.ts). Same retry/backoff shape as
- * OpenAIEmbeddingProvider: transient failures (429/5xx/network) retry
- * with exponential backoff honoring Retry-After, everything else fails
- * fast.
+ * OpenAIEmbeddingProvider: transient failures (429/5xx/network, including
+ * a connection that never responds — see connectTimeoutMs) retry with
+ * exponential backoff honoring Retry-After, everything else fails fast.
  */
 export class ResendEmailProvider implements EmailProvider {
   private readonly apiKey: string;
@@ -30,6 +37,7 @@ export class ResendEmailProvider implements EmailProvider {
   private readonly maxRetries: number;
   private readonly baseDelayMs: number;
   private readonly baseUrl: string;
+  private readonly connectTimeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly sleepImpl: (ms: number) => Promise<void>;
 
@@ -39,6 +47,7 @@ export class ResendEmailProvider implements EmailProvider {
     this.maxRetries = options.maxRetries ?? 3;
     this.baseDelayMs = options.baseDelayMs ?? 1000;
     this.baseUrl = options.baseUrl ?? "https://api.resend.com";
+    this.connectTimeoutMs = options.connectTimeoutMs ?? 30_000;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.sleepImpl = options.sleepImpl ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
@@ -52,20 +61,25 @@ export class ResendEmailProvider implements EmailProvider {
       }
 
       try {
-        const response = await this.fetchImpl(`${this.baseUrl}/emails`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: this.from,
-            to: [params.to],
-            subject: params.subject,
-            html: params.html,
-            text: params.text,
-          }),
-        });
+        const response = await withTimeout(
+          (signal) =>
+            this.fetchImpl(`${this.baseUrl}/emails`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${this.apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: this.from,
+                to: [params.to],
+                subject: params.subject,
+                html: params.html,
+                text: params.text,
+              }),
+              signal,
+            }),
+          this.connectTimeoutMs,
+        );
 
         if (!response.ok) {
           const body = await response.text().catch(() => "");
@@ -87,6 +101,8 @@ export class ResendEmailProvider implements EmailProvider {
         if (err instanceof ResendEmailError) {
           throw err;
         }
+        // Network-level failure or connectTimeoutMs's TimeoutError —
+        // always retryable up to the budget.
         if (attempt === this.maxRetries) {
           throw err;
         }

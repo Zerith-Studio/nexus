@@ -59,4 +59,30 @@ describe("ResendEmailProvider", () => {
     await expect(provider.send(PARAMS)).rejects.toThrow(ResendEmailError);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
+
+  it("aborts and retries a hung connection once connectTimeoutMs elapses", async () => {
+    const hungFetch = vi.fn().mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    );
+    const fetchImpl = vi
+      .fn()
+      .mockImplementationOnce(hungFetch)
+      .mockResolvedValueOnce(jsonResponse(200, { id: "email_123" }));
+    const sleepImpl = vi.fn().mockResolvedValue(undefined);
+    const provider = new ResendEmailProvider({
+      apiKey: "re_test",
+      from: "Nexus <noreply@example.com>",
+      fetchImpl,
+      sleepImpl,
+      maxRetries: 1,
+      connectTimeoutMs: 20,
+    });
+
+    await provider.send(PARAMS);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
 });
