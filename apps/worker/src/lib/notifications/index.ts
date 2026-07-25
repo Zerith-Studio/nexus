@@ -39,7 +39,7 @@ export interface CreateNotifierConfig {
  * `config`/`log` default to the real env/logger — the production call
  * site (index.ts) calls this with no arguments, same as before. Both are
  * accepted as parameters (same injectable-config shape as
- * sweepStuckDocuments's options or processEmbedChunksJob's deps
+ * sweepStuckDocumentsProcessor's options or processEmbedChunksJob's deps
  * elsewhere in this app) so a test can exercise "webhook configured" vs.
  * "not configured" directly, without process.env/module-reset gymnastics.
  */

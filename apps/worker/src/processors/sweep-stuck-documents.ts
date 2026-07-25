@@ -106,7 +106,7 @@ function failureReason(thresholdMs: number): string {
  * so jobId is bound once up front and organizationId/documentId are
  * added per document inside the loop.
  */
-export async function sweepStuckDocuments(
+export async function sweepStuckDocumentsProcessor(
   options: { thresholdMs?: number; autoRetry?: boolean; maxAutoRetries?: number; job?: Job } = {},
 ): Promise<SweepResult> {
   const thresholdMs = options.thresholdMs ?? env.STUCK_DOCUMENT_THRESHOLD_MS;

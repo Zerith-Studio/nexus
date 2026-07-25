@@ -12,11 +12,11 @@ import { Queue } from "bullmq";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { redisConnection } from "../lib/redis.js";
-import { sweepStuckDocuments } from "./sweep-stuck-documents.js";
+import { sweepStuckDocumentsProcessor } from "./sweep-stuck-documents.js";
 
 const THRESHOLD_MS = 1000;
 
-describe("sweepStuckDocuments", () => {
+describe("sweepStuckDocumentsProcessor", () => {
   const suffix = randomUUID().slice(0, 8);
   let orgA: { id: string };
   let orgB: { id: string };
@@ -62,7 +62,7 @@ describe("sweepStuckDocuments", () => {
     const stuckId = await createDocument(orgA.id, kbA.id, "QUEUED", THRESHOLD_MS * 3);
     const freshId = await createDocument(orgA.id, kbA.id, "QUEUED", 0);
 
-    const result = await sweepStuckDocuments({ thresholdMs: THRESHOLD_MS });
+    const result = await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS });
 
     const stuck = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: stuckId } }));
     const fresh = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: freshId } }));
@@ -77,7 +77,7 @@ describe("sweepStuckDocuments", () => {
   it("marks a stuck PROCESSING document FAILED too", async () => {
     const stuckId = await createDocument(orgA.id, kbA.id, "PROCESSING", THRESHOLD_MS * 3);
 
-    await sweepStuckDocuments({ thresholdMs: THRESHOLD_MS });
+    await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS });
 
     const doc = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: stuckId } }));
     expect(doc!.status).toBe("FAILED");
@@ -87,7 +87,7 @@ describe("sweepStuckDocuments", () => {
     const stuckAId = await createDocument(orgA.id, kbA.id, "QUEUED", THRESHOLD_MS * 3);
     const stuckBId = await createDocument(orgB.id, kbB.id, "QUEUED", THRESHOLD_MS * 3);
 
-    await sweepStuckDocuments({ thresholdMs: THRESHOLD_MS });
+    await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS });
 
     const docA = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: stuckAId } }));
     const docB = await withTenantTransaction(orgB.id, (tx) => tx.document.findUnique({ where: { id: stuckBId } }));
@@ -103,7 +103,7 @@ describe("sweepStuckDocuments", () => {
       (tx) => tx.$executeRaw`UPDATE "Document" SET "updatedAt" = ${new Date(Date.now() - THRESHOLD_MS * 3)} WHERE id = ${readyId}`,
     );
 
-    await sweepStuckDocuments({ thresholdMs: THRESHOLD_MS });
+    await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS });
 
     const doc = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: readyId } }));
     expect(doc!.status).toBe("READY");
@@ -112,7 +112,7 @@ describe("sweepStuckDocuments", () => {
   it("with autoRetry enabled, enqueues a fresh process-document job for the stuck document", async () => {
     const stuckId = await createDocument(orgA.id, kbA.id, "PROCESSING", THRESHOLD_MS * 3);
 
-    const result = await sweepStuckDocuments({ thresholdMs: THRESHOLD_MS, autoRetry: true });
+    const result = await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS, autoRetry: true });
     expect(result.retried).toBeGreaterThanOrEqual(1);
 
     // Verifying against the queue directly, not Document.status: once a
@@ -121,7 +121,7 @@ describe("sweepStuckDocuments", () => {
     // another test file's in-process worker here) may legitimately pick
     // it up and move status again before an assertion could read it —
     // that's correct retry behavior, not something to race against. What
-    // sweepStuckDocuments actually promises is that a fresh job exists.
+    // sweepStuckDocumentsProcessor actually promises is that a fresh job exists.
     const processingQueue = new Queue(QUEUE_NAMES.processing, { connection: redisConnection });
     try {
       // process-document is the flow's PARENT job — it starts in
@@ -139,7 +139,7 @@ describe("sweepStuckDocuments", () => {
   it("with autoRetry enabled, increments retryCount on every automatic re-enqueue", async () => {
     const stuckId = await createDocument(orgA.id, kbA.id, "PROCESSING", THRESHOLD_MS * 3, 1);
 
-    await sweepStuckDocuments({ thresholdMs: THRESHOLD_MS, autoRetry: true, maxAutoRetries: 5 });
+    await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS, autoRetry: true, maxAutoRetries: 5 });
 
     const doc = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: stuckId } }));
     expect(doc!.retryCount).toBe(2);
@@ -149,7 +149,7 @@ describe("sweepStuckDocuments", () => {
   it("with autoRetry enabled, leaves a document that already hit maxAutoRetries permanently FAILED instead of re-enqueuing it again", async () => {
     const stuckId = await createDocument(orgA.id, kbA.id, "PROCESSING", THRESHOLD_MS * 3, 3);
 
-    const result = await sweepStuckDocuments({ thresholdMs: THRESHOLD_MS, autoRetry: true, maxAutoRetries: 3 });
+    const result = await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS, autoRetry: true, maxAutoRetries: 3 });
 
     const doc = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: stuckId } }));
     expect(doc!.status).toBe("FAILED");

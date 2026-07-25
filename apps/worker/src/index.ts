@@ -30,7 +30,7 @@ import { embedChunksProcessor } from "./processors/embed-chunks.js";
 import { extractTextProcessor } from "./processors/extract-text.js";
 import { processDocumentProcessor } from "./processors/process-document.js";
 import { sendEmailProcessor } from "./processors/send-email.js";
-import { sweepStuckDocuments } from "./processors/sweep-stuck-documents.js";
+import { sweepStuckDocumentsProcessor } from "./processors/sweep-stuck-documents.js";
 import type { DocumentJobData } from "./processors/types.js";
 import { documentEmbeddingQueue } from "./queue/queues.js";
 
@@ -161,7 +161,7 @@ async function main(): Promise<void> {
   // doc comment). A fixed per-job ceiling sized for per-document work
   // would eventually become a false-failure trap purely from the platform
   // growing, not an actual safety issue.
-  const sweepWorker = new Worker(QUEUE_NAMES.sweep, (job) => sweepStuckDocuments({ job }), {
+  const sweepWorker = new Worker(QUEUE_NAMES.sweep, (job) => sweepStuckDocumentsProcessor({ job }), {
     ...sharedWorkerOptions,
     concurrency: env.WORKER_SWEEP_CONCURRENCY,
   });
