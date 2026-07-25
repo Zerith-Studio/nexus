@@ -9,6 +9,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { env } from "../env.js";
 import { findOrCreateConversation, loadConversationHistory } from "../lib/conversation.js";
 import { getBudgetGuardedEmbeddingProvider } from "../lib/embedding-provider.js";
+import { assertActiveKnowledgeBase } from "../lib/knowledge-base-status.js";
 import { resolveLlmProvider } from "../lib/llm-provider.js";
 import { requireMembership } from "../lib/membership.js";
 import { checkChatRateLimit, reserveChatTokenBudget, settleChatTokenUsage } from "../lib/rate-limit.js";
@@ -64,9 +65,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     // between.
     const { conversation, history } = await withTenantTransaction(input.organizationId, async (tx) => {
       const knowledgeBase = await tx.knowledgeBase.findUnique({ where: { id: knowledgeBaseId } });
-      if (!knowledgeBase) {
-        throw ApiError.notFound("Knowledge base not found");
-      }
+      assertActiveKnowledgeBase(knowledgeBase);
 
       const conversation = await findOrCreateConversation(tx, {
         organizationId: input.organizationId,

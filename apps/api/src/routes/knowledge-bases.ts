@@ -15,21 +15,13 @@ import type { FastifyInstance } from "fastify";
 import { env } from "../env.js";
 import { DOCUMENT_METADATA_BODY_LIMIT_BYTES } from "../lib/body-limits.js";
 import { enqueueKnowledgeBaseCleanup } from "../lib/kb-cleanup.js";
+import { assertActiveKnowledgeBase } from "../lib/knowledge-base-status.js";
 import { requireMembership } from "../lib/membership.js";
 import { paginate } from "../lib/pagination.js";
 import { checkIngestionRateLimit } from "../lib/rate-limit.js";
 import { hasAtLeastRole } from "../lib/roles.js";
 import { buildStorageKey, createPresignedUpload, deleteObjects } from "../lib/storage.js";
 import { requireAuth } from "../plugins/auth-guard.js";
-
-/** ACTIVE-only, 404 otherwise — a KB mid-async-deletion (see DELETE
- * /kb/:id) is treated as already gone by every read/write path below,
- * even though its rows still exist until the worker finishes. */
-function assertActiveKnowledgeBase(knowledgeBase: { status: string } | null): void {
-  if (!knowledgeBase || knowledgeBase.status !== "ACTIVE") {
-    throw ApiError.notFound("Knowledge base not found");
-  }
-}
 
 export async function knowledgeBaseRoutes(app: FastifyInstance): Promise<void> {
   app.post("/kb", { preHandler: requireAuth }, async (request, reply) => {
