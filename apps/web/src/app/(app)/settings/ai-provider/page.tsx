@@ -145,78 +145,86 @@ export default function AiProviderPage() {
           <CardHeader>
             <CardTitle className="text-base">Change provider</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Provider</Label>
-              <Select value={selection} onValueChange={(value) => selectProvider(value as Selection)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nexus">Nexus-managed</SelectItem>
-                  {LLM_PROVIDERS.map((provider) => (
-                    <SelectItem key={provider} value={provider}>
-                      {PROVIDER_LABELS[provider]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <CardContent>
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (isDirty && !setLlmConfig.isPending && !deleteLlmConfig.isPending) void handleSave();
+              }}
+            >
+              <div className="space-y-1.5">
+                <Label>Provider</Label>
+                <Select value={selection} onValueChange={(value) => selectProvider(value as Selection)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nexus">Nexus-managed</SelectItem>
+                    {LLM_PROVIDERS.map((provider) => (
+                      <SelectItem key={provider} value={provider}>
+                        {PROVIDER_LABELS[provider]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            {selection !== "nexus" && (
-              <>
-                <div className="space-y-1.5">
-                  <Label>Model</Label>
-                  <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {models.map((m) => (
-                        <SelectItem key={m} value={m}>
-                          {m}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {selection !== "nexus" && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>Model</Label>
+                    <Select value={model} onValueChange={setModel}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {models.map((m) => (
+                          <SelectItem key={m} value={m}>
+                            {m}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="provider-api-key">API key</Label>
-                  <Input
-                    id="provider-api-key"
-                    type="password"
-                    autoComplete="off"
-                    placeholder={saved ? "•••• configured — enter a new key to change it" : "sk-..."}
-                    value={apiKey}
-                    onChange={(e) => {
-                      setApiKey(e.target.value);
-                      setTestResult(null);
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Stored encrypted. Never shown again after saving — {saved ? "leave blank to keep the current key" : "required to save"}.
-                  </p>
-                </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="provider-api-key">API key</Label>
+                    <Input
+                      id="provider-api-key"
+                      type="password"
+                      autoComplete="off"
+                      placeholder={saved ? "•••• configured — enter a new key to change it" : "sk-..."}
+                      value={apiKey}
+                      onChange={(e) => {
+                        setApiKey(e.target.value);
+                        setTestResult(null);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Stored encrypted. Never shown again after saving — {saved ? "leave blank to keep the current key" : "required to save"}.
+                    </p>
+                  </div>
 
-                <div className="flex items-center gap-3">
-                  <Button type="button" variant="outline" size="sm" onClick={() => void handleTest()} disabled={testLlmConfig.isPending}>
-                    {testLlmConfig.isPending && <Loader2Icon className="animate-spin" />}
-                    Test connection
-                  </Button>
-                  {testResult && (
-                    <span className={`text-sm ${testResult.ok ? "text-success" : "text-destructive"}`}>
-                      {testResult.ok ? "Connection succeeded." : testResult.message}
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
+                  <div className="flex items-center gap-3">
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleTest()} disabled={testLlmConfig.isPending}>
+                      {testLlmConfig.isPending && <Loader2Icon className="animate-spin" />}
+                      Test connection
+                    </Button>
+                    {testResult && (
+                      <span className={`text-sm ${testResult.ok ? "text-success" : "text-destructive"}`}>
+                        {testResult.ok ? "Connection succeeded." : testResult.message}
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
 
-            <Button onClick={() => void handleSave()} disabled={!isDirty || setLlmConfig.isPending || deleteLlmConfig.isPending}>
-              {(setLlmConfig.isPending || deleteLlmConfig.isPending) && <Loader2Icon className="animate-spin" />}
-              {selection === "nexus" ? "Switch to Nexus-managed" : "Save"}
-            </Button>
+              <Button type="submit" disabled={!isDirty || setLlmConfig.isPending || deleteLlmConfig.isPending}>
+                {(setLlmConfig.isPending || deleteLlmConfig.isPending) && <Loader2Icon className="animate-spin" />}
+                {selection === "nexus" ? "Switch to Nexus-managed" : "Save"}
+              </Button>
+            </form>
           </CardContent>
         </Card>
       )}

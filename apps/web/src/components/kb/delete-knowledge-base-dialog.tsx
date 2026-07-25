@@ -56,22 +56,29 @@ export function DeleteKnowledgeBaseDialog({
             all of its documents, and every conversation tied to it. This cannot be undone.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-1.5">
-          <Label htmlFor="confirm-name">
-            Type <span className="font-mono">{knowledgeBaseName}</span> to confirm
-          </Label>
-          <Input id="confirm-name" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
-        </div>
-        <DialogFooter>
-          <Button
-            variant="destructive"
-            disabled={confirmation !== knowledgeBaseName || deleteKnowledgeBase.isPending}
-            onClick={handleDelete}
-          >
-            {deleteKnowledgeBase.isPending && <Loader2Icon className="animate-spin" />}
-            Delete permanently
-          </Button>
-        </DialogFooter>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (confirmation === knowledgeBaseName && !deleteKnowledgeBase.isPending) void handleDelete();
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-name">
+              Type <span className="font-mono">{knowledgeBaseName}</span> to confirm
+            </Label>
+            <Input id="confirm-name" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
+          </div>
+          <DialogFooter className="mt-4">
+            <Button
+              type="submit"
+              variant="destructive"
+              disabled={confirmation !== knowledgeBaseName || deleteKnowledgeBase.isPending}
+            >
+              {deleteKnowledgeBase.isPending && <Loader2Icon className="animate-spin" />}
+              Delete permanently
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

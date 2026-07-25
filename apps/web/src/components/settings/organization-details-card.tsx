@@ -46,16 +46,22 @@ export function OrganizationDetailsCard({ organization }: { organization: Organi
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground">Name</p>
           {editing ? (
-            <div className="flex gap-2">
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!saving) void handleSave();
+              }}
+            >
               <Input value={name} onChange={(e) => setName(e.target.value)} className="max-w-sm" />
-              <Button size="sm" onClick={handleSave} disabled={saving}>
+              <Button type="submit" size="sm" disabled={saving}>
                 {saving && <Loader2Icon className="animate-spin" />}
                 Save
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
                 Cancel
               </Button>
-            </div>
+            </form>
           ) : (
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">{organization.name}</p>
