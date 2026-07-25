@@ -31,7 +31,8 @@
   "prettier": "@raas/config/prettier",
   "pnpm": {
     "overrides": {
-      "eslint-plugin-react-hooks": "^5.1.0"
+      "eslint-plugin-react-hooks": "^5.1.0",
+      "postcss@8.4.31": "^8.5.21"
     }
   }
 }
