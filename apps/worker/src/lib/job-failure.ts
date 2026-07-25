@@ -37,6 +37,23 @@ export class DocumentValidationError extends UnrecoverableError {
   }
 }
 
+/**
+ * Thrown by every pipeline stage when it finds the document already
+ * DELETED (the user deleted it — DELETE /documents/:id — while it was
+ * still QUEUED/PROCESSING). Deliberately NOT handled like other
+ * UnrecoverableErrors: a stage catching this must skip failDocument
+ * entirely, since flipping status to FAILED would resurrect a deleted
+ * document back into something visible in the UI. This only closes the
+ * "stage hasn't started yet" window — a stage already mid-write when the
+ * delete lands isn't covered; see each processor's own comment.
+ */
+export class DocumentDeletedError extends UnrecoverableError {
+  constructor(documentId: string) {
+    super(`Document ${documentId} was deleted — skipping remaining pipeline stages`);
+    this.name = "DocumentDeletedError";
+  }
+}
+
 const GENERIC_FAILURE_REASON = "Document processing failed. Please contact support.";
 
 /**

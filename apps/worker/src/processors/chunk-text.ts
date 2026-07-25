@@ -5,7 +5,7 @@ import { UnrecoverableError, type Job } from "bullmq";
 import { env } from "../env.js";
 import { chunkPages } from "../lib/chunk-text.js";
 import type { ExtractedDocument } from "../lib/extract-pdf.js";
-import { DocumentValidationError, failDocument, isLastAttempt } from "../lib/job-failure.js";
+import { DocumentDeletedError, DocumentValidationError, failDocument, isLastAttempt } from "../lib/job-failure.js";
 import { createJobLogger } from "../lib/job-logger.js";
 import { DEFAULT_JOB_OPTS, documentEmbeddingQueue } from "../queue/queues.js";
 import type { DocumentJobData, EmbedChunksJobData } from "./types.js";
@@ -47,6 +47,19 @@ export async function chunkTextProcessor(job: Job<DocumentJobData>): Promise<{ c
   try {
     if (!job.parent) {
       throw new UnrecoverableError(`chunk-text job ${job.id} has no parent — it must run as part of the process-document flow`);
+    }
+
+    // extract-text checks this too, but that check can't cover a delete
+    // that lands after extract-text already succeeded and before this
+    // stage starts — this stage has no document-status guard of its own
+    // otherwise, and would happily recreate chunk rows DELETE just
+    // hard-deleted.
+    const document = await withTenantTransaction(organizationId, (tx) => tx.document.findUnique({ where: { id: documentId } }));
+    if (!document) {
+      throw new UnrecoverableError(`Document ${documentId} not found`);
+    }
+    if (document.status === "DELETED") {
+      throw new DocumentDeletedError(documentId);
     }
 
     const children = await job.getChildrenValues<ExtractedDocument>();
@@ -121,6 +134,10 @@ export async function chunkTextProcessor(job: Job<DocumentJobData>): Promise<{ c
     log.info({ chunkCount: chunks.length, batchCount: batches.length }, "document chunked");
     return { chunkCount: chunks.length };
   } catch (err) {
+    if (err instanceof DocumentDeletedError) {
+      log.info({ err }, "chunk-text skipped: document deleted");
+      throw err;
+    }
     if (err instanceof UnrecoverableError) {
       await failDocument(organizationId, documentId, err);
       log.warn({ err }, "chunk-text failed: unrecoverable");

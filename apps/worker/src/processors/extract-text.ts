@@ -6,7 +6,7 @@ import { env } from "../env.js";
 import { extractDocument } from "../lib/extract-document.js";
 import { ScannedDocumentError } from "../lib/extract-pdf.js";
 import type { ExtractedDocument } from "../lib/extracted-document.js";
-import { DocumentValidationError, failDocument, isLastAttempt } from "../lib/job-failure.js";
+import { DocumentDeletedError, DocumentValidationError, failDocument, isLastAttempt } from "../lib/job-failure.js";
 import { createJobLogger } from "../lib/job-logger.js";
 import { downloadObject } from "../lib/storage.js";
 import type { DocumentJobData } from "./types.js";
@@ -26,6 +26,9 @@ export async function extractTextProcessor(job: Job<DocumentJobData>): Promise<E
       const existing = await tx.document.findUnique({ where: { id: documentId } });
       if (!existing) {
         throw new UnrecoverableError(`Document ${documentId} not found`);
+      }
+      if (existing.status === "DELETED") {
+        throw new DocumentDeletedError(documentId);
       }
       if (existing.status === "READY" || existing.status === "FAILED") {
         throw new UnrecoverableError(`Document ${documentId} is already in terminal status ${existing.status}`);
@@ -83,6 +86,10 @@ export async function extractTextProcessor(job: Job<DocumentJobData>): Promise<E
     log.info({ pageCount: extracted.pages.length }, "text extracted");
     return extracted;
   } catch (err) {
+    if (err instanceof DocumentDeletedError) {
+      log.info({ err }, "extract-text skipped: document deleted");
+      throw err;
+    }
     if (err instanceof ScannedDocumentError) {
       // PDF-specific — extractDocument only ever routes to a path that can
       // throw this for application/pdf, never for the other formats.

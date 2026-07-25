@@ -21,10 +21,19 @@ export async function processDocumentProcessor(job: Job<DocumentJobData>): Promi
 
   try {
     await withTenantTransaction(organizationId, async (tx) => {
-      await tx.document.update({
-        where: { id: documentId },
+      // Conditional, atomic — same reasoning as DELETE /documents/:id's own
+      // updateMany: a delete that lands after every earlier stage already
+      // succeeded (so this is the only stage left to guard) must not have
+      // this flip it back to READY. count === 0 means exactly that
+      // happened; skip the READY transition and the usage record for it.
+      const result = await tx.document.updateMany({
+        where: { id: documentId, status: { not: "DELETED" } },
         data: { status: "READY", processedAt: new Date() },
       });
+      if (result.count === 0) {
+        log.info("process-document skipped: document deleted");
+        return;
+      }
       await recordUsage({ organizationId, type: "DOCUMENT_PROCESSED", metadata: { documentId, knowledgeBaseId } }, tx);
     });
     log.info("document marked READY");

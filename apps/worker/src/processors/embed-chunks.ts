@@ -5,7 +5,7 @@ import { recordUsage } from "@raas/usage";
 import { UnrecoverableError, type Job } from "bullmq";
 
 import { getBudgetGuardedEmbeddingProvider, getEmbeddingModelName } from "../lib/embedding-provider.js";
-import { failDocument, isLastAttempt } from "../lib/job-failure.js";
+import { DocumentDeletedError, failDocument, isLastAttempt } from "../lib/job-failure.js";
 import { createJobLogger } from "../lib/job-logger.js";
 import type { EmbedChunksJobData } from "./types.js";
 
@@ -88,6 +88,16 @@ export async function processEmbedChunksJob(job: Job<EmbedChunksJobData>, deps: 
   const log = createJobLogger({ jobId: job.id, organizationId, documentId, requestId, knowledgeBaseId });
 
   try {
+    // Guards the same resurrection risk as chunk-text.ts's equivalent
+    // check: a delete that lands after chunk-text already enqueued this
+    // batch, but before it runs, would otherwise hit the "chunk not
+    // found" branch below (its rows were hard-deleted) and — without this
+    // check — that path calls failDocument, flipping DELETED to FAILED.
+    const document = await withTenantTransaction(organizationId, (tx) => tx.document.findUnique({ where: { id: documentId } }));
+    if (document?.status === "DELETED") {
+      throw new DocumentDeletedError(documentId);
+    }
+
     const { chunks, embeddedIds } = await withTenantTransaction(organizationId, async (tx) => {
       const found = await tx.documentChunk.findMany({ where: { id: { in: chunkIds }, documentId } });
       // `embedding` is Prisma's Unsupported("vector(n)") type — excluded
@@ -173,6 +183,10 @@ export async function processEmbedChunksJob(job: Job<EmbedChunksJobData>, deps: 
     log.info({ embedded: orderedChunks.length }, "batch embedded");
     return { embedded: orderedChunks.length };
   } catch (err) {
+    if (err instanceof DocumentDeletedError) {
+      log.info({ err }, "embed-chunks skipped: document deleted");
+      throw err;
+    }
     // A daily embedding-token budget won't reset within the retry
     // backoff window (5s/10s/20s — see queue/queues.ts's exponential
     // backoff), so retrying immediately is pointless: fail the document
