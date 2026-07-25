@@ -5,6 +5,7 @@ import { useUsage } from "@/hooks/use-usage";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { UsageChart } from "@/components/settings/usage-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function UsagePage() {
@@ -20,6 +21,14 @@ export default function UsagePage() {
           ))}
         </div>
         <Skeleton className="h-52 rounded-xl" />
+      </div>
+    );
+  }
+
+  if (usage.isError) {
+    return (
+      <div className="max-w-3xl">
+        <ErrorState description="We couldn't load your usage data." onRetry={() => usage.refetch()} />
       </div>
     );
   }

@@ -24,6 +24,7 @@ import { RenameKnowledgeBaseDialog } from "@/components/kb/rename-knowledge-base
 import { DeleteKnowledgeBaseDialog } from "@/components/kb/delete-knowledge-base-dialog";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -53,6 +54,14 @@ export default function KnowledgeBaseDetailPage({
       <div className="px-6 py-6">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="mt-4 h-32 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  if (kb.isError) {
+    return (
+      <div className="px-6 py-16">
+        <ErrorState description="We couldn't load this knowledge base." onRetry={() => kb.refetch()} />
       </div>
     );
   }

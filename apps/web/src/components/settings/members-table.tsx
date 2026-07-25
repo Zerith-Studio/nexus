@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/session-context";
 import { useChangeMemberRole, useMembers, useRemoveMember } from "@/hooks/use-organization-members";
@@ -41,6 +42,10 @@ export function MembersTable({ organizationId }: { organizationId: string }) {
 
   if (members.isLoading) {
     return <Skeleton className="h-40 w-full" />;
+  }
+
+  if (members.isError) {
+    return <ErrorState description="We couldn't load organization members." onRetry={() => members.refetch()} />;
   }
 
   if (rows.length === 0) {

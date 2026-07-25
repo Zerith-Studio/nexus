@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { KnowledgeBaseCard } from "@/components/kb/knowledge-base-card";
 import { CreateKnowledgeBaseDialog } from "@/components/kb/create-knowledge-base-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +76,8 @@ export default function KnowledgeBasesPage() {
               <Skeleton key={i} className="h-40 rounded-xl" />
             ))}
           </div>
+        ) : knowledgeBases.isError ? (
+          <ErrorState description="We couldn't load your knowledge bases." onRetry={() => knowledgeBases.refetch()} />
         ) : kbs.length === 0 ? (
           <EmptyState
             icon={DatabaseIcon}
