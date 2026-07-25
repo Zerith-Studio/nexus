@@ -34,6 +34,7 @@ It is **not** a chatbot demo. It's built the way you'd build it if you were char
 - **Grounded, cited chat** — every answer streams over SSE and links back to the exact source passage it was built from. Citations are verified server-side against what was actually retrieved for that request — a model can't claim a source it wasn't given.
 - **Public API + dashboard** — every dashboard action has a matching authenticated API endpoint; scoped API keys let customers integrate retrieval into their own product.
 - **Usage metering & billing** — token/request/document usage tracked per organization with daily budgets and rate limits, wired to Paddle for subscription billing (three self-serve tiers plus webhook-driven plan resolution).
+- **Bring your own LLM** — an org can switch chat traffic from Nexus-managed inference to its own OpenAI, Anthropic, or Groq API key (AES-256-GCM encrypted at rest, connection-tested before saving, hard-fails rather than silently falling back to Nexus's account if the key stops working).
 - **Real observability** — structured logging, Prometheus-style metrics (HTTP, queue, ingestion, usage), and Sentry error tracking, not console.log.
 
 ## Screenshots
@@ -76,7 +77,7 @@ Turborepo monorepo, three deployables built from the same codebase and scaled in
 | **`apps/api`** | Fastify HTTP API. Auth, org/KB/document CRUD, chat (retrieval + LLM, streamed over SSE), the public API-key-authenticated surface, enqueues ingestion jobs — never does heavy CPU work inline. |
 | **`apps/worker`** | BullMQ workers. Document pipeline (extract → chunk → embed → store), usage rollups, stuck-job sweeps. |
 | **`packages/db`** | Prisma schema + client, plus the tenant-context helpers (`withTenantTransaction`) every RLS-enforced query goes through. |
-| **`packages/providers`** | LLM + embedding provider abstraction — OpenAI and Groq today, plus a `fake` provider for offline local dev, all behind one interface. |
+| **`packages/providers`** | LLM + embedding provider abstraction — OpenAI, Anthropic, and Groq, plus a `fake` provider for offline local dev, all behind one interface. |
 | **`packages/auth`** | Session JWT + API-key verification shared by `api` and `web`. |
 | **`packages/shared`** | Zod schemas and TypeScript contracts shared across all three apps. |
 | **`packages/rate-limit`** | Redis-backed token-bucket limiting, tiered by plan and endpoint. |
@@ -107,7 +108,7 @@ Turborepo monorepo, three deployables built from the same codebase and scaled in
 | Workers | BullMQ 5 on Redis |
 | Database | PostgreSQL + pgvector, Prisma, row-level security |
 | Storage | S3-compatible object storage (S3 / Cloudflare R2) |
-| LLM / embeddings | OpenAI, Groq — behind a provider interface; a deterministic `fake` provider for local dev |
+| LLM / embeddings | Platform-managed: OpenAI, Groq (a deterministic `fake` provider for local dev). Bring-your-own: OpenAI, Anthropic, or Groq per organization. All behind one provider interface. |
 | Billing | Paddle (Merchant of Record) |
 | Auth | Email + OTP, optional Google OAuth, signed session JWT with Redis-backed revocation |
 | Observability | Pino structured logs, Prometheus-style metrics, Sentry |
@@ -229,7 +230,6 @@ Created per organization, shown in full exactly once. Only a hash is persisted; 
 
 ## Roadmap
 
-- Bring-your-own-LLM: per-organization OpenAI/Anthropic/Groq keys, encrypted at rest, with connection testing and health status (in progress — see `docs/`).
 - Hybrid retrieval (BM25 + vector) for keyword-heavy queries.
 - Document-level/KB-level ACLs beyond today's org-level access.
 - Reranking as a first-class, configurable pipeline stage (the interface already exists as a no-op pass-through).
