@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyState } from "@/components/ui/empty-state";
 import { DocumentStatusBadge } from "@/components/kb/document-status-badge";
 import { useDeleteDocument, useRetryDocument } from "@/hooks/use-documents";
+import { formatBytes } from "@/lib/utils";
 import type { Document, DocumentStatus } from "@/lib/types";
 
 const STATUS_FILTERS: { value: DocumentStatus | "all"; label: string }[] = [
@@ -34,18 +35,6 @@ const STATUS_FILTERS: { value: DocumentStatus | "all"; label: string }[] = [
   { value: "QUEUED", label: "Queued" },
   { value: "FAILED", label: "Failed" },
 ];
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value.toFixed(1)} ${units[unitIndex]}`;
-}
 
 export function DocumentsTable({
   documents,
