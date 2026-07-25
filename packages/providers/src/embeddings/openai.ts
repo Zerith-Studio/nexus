@@ -1,3 +1,4 @@
+import { withTimeout } from "../resilience/timeout.js";
 import type { EmbeddingProvider } from "./types.js";
 
 export interface OpenAIEmbeddingProviderOptions {
@@ -13,6 +14,12 @@ export interface OpenAIEmbeddingProviderOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   baseUrl?: string;
+  /** Max time to wait for a batch's response (headers/status), matching
+   * OpenAIChatProvider's connectTimeoutMs — a hung connection would
+   * otherwise occupy a worker job slot indefinitely (see job-timeout.ts's
+   * own, much coarser backstop, which can't cancel the underlying fetch).
+   * Applies per attempt, so a retry gets its own fresh budget. */
+  connectTimeoutMs?: number;
   /** Injectable for tests — never hits the real OpenAI API in the test
    * suite (see this package's openai.test.ts). */
   fetchImpl?: typeof fetch;
@@ -39,7 +46,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 
 /**
  * OpenAI implementation of EmbeddingProvider. Batches requests, retries
- * transient failures (429/5xx/network errors) with exponential backoff
+ * transient failures (429/5xx/network errors, including a connection that
+ * never responds — see connectTimeoutMs) with exponential backoff
  * (honoring a Retry-After header when the API sends one), and fails fast
  * on non-retryable errors (bad API key, malformed input) rather than
  * burning through the retry budget on something retrying can't fix.
@@ -51,6 +59,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
   private readonly maxRetries: number;
   private readonly baseDelayMs: number;
   private readonly baseUrl: string;
+  private readonly connectTimeoutMs: number;
   private readonly fetchImpl: typeof fetch;
   private readonly sleepImpl: (ms: number) => Promise<void>;
 
@@ -61,6 +70,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     this.maxRetries = options.maxRetries ?? 3;
     this.baseDelayMs = options.baseDelayMs ?? 1000;
     this.baseUrl = options.baseUrl ?? "https://api.openai.com/v1";
+    this.connectTimeoutMs = options.connectTimeoutMs ?? 30_000;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.sleepImpl = options.sleepImpl ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
@@ -87,14 +97,19 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
       }
 
       try {
-        const response = await this.fetchImpl(`${this.baseUrl}/embeddings`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ model: this.model, input: batch }),
-        });
+        const response = await withTimeout(
+          (signal) =>
+            this.fetchImpl(`${this.baseUrl}/embeddings`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${this.apiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ model: this.model, input: batch }),
+              signal,
+            }),
+          this.connectTimeoutMs,
+        );
 
         if (!response.ok) {
           const body = await response.text().catch(() => "");
@@ -117,7 +132,8 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         if (err instanceof OpenAIEmbeddingError) {
           throw err;
         }
-        // Network-level failure (fetch rejected) — always retryable.
+        // Network-level failure or connectTimeoutMs's TimeoutError —
+        // always retryable up to the budget.
         if (attempt === this.maxRetries) {
           throw err;
         }

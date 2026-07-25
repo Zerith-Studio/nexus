@@ -149,4 +149,31 @@ describe("OpenAIEmbeddingProvider", () => {
     expect(result).toEqual([[1, 0]]);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+
+  it("aborts and retries a hung connection once connectTimeoutMs elapses", async () => {
+    const hungFetch = vi.fn().mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    );
+    const fetchImpl = vi
+      .fn()
+      .mockImplementationOnce(hungFetch)
+      .mockResolvedValueOnce(jsonResponse(200, embeddingPayload(["a"])));
+    const sleepImpl = vi.fn().mockResolvedValue(undefined);
+    const provider = new OpenAIEmbeddingProvider({
+      apiKey: "sk-test",
+      model: "text-embedding-3-small",
+      fetchImpl,
+      sleepImpl,
+      maxRetries: 1,
+      connectTimeoutMs: 20,
+    });
+
+    const result = await provider.embed(["a"]);
+
+    expect(result).toEqual([[1, 0]]);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
 });
