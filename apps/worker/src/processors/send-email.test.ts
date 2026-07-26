@@ -34,4 +34,28 @@ describe("sendEmailProcessor", () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("processor-test@example.com"));
     logSpy.mockRestore();
   });
+
+  it("does not re-send when retried after a previous attempt already delivered it", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const job = await queue.add(JOB_NAMES.sendTransactionalEmail, {
+      to: "idempotent-retry-test@example.com",
+      subject: "Your code",
+      html: "<p>111222</p>",
+      text: "Your verification code is 111222.",
+    });
+
+    await sendEmailProcessor(job);
+    logSpy.mockClear();
+
+    // Simulate BullMQ retrying this same job after a previous attempt's
+    // provider call already succeeded — job.updateData persisted `sent:
+    // true` onto this exact job, so a fresh read of it (as a real retry
+    // would see) must skip calling the provider again.
+    const retriedJob = await queue.getJob(job.id!);
+    await sendEmailProcessor(retriedJob!);
+
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining("idempotent-retry-test@example.com"));
+    logSpy.mockRestore();
+  });
 });
