@@ -32,6 +32,16 @@ function applyHeaders(reply: FastifyReply, result: { limit: number; remaining: n
  * list. Relies on app.ts's trustProxy setting for request.ip to reflect
  * the real client IP behind a reverse proxy in production; falls back to
  * the raw socket address otherwise (fine for local dev).
+ *
+ * Also checks a second, per-account bucket when the body has a string
+ * `email` field (every one of this preHandler's four call sites does) —
+ * the IP bucket alone never trips for an attacker distributing attempts
+ * against one target account across many source IPs. Read directly off
+ * the unvalidated body (Fastify parses JSON before preHandler runs, but
+ * this route's own Zod schema hasn't — see each route's own parseOrThrow
+ * call right after this) rather than waiting for validation, since the
+ * whole point is to throttle before any real work, including validation
+ * errors from a malformed body, happens.
  */
 export async function authRateLimit(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const result = await rateLimiter.checkLimit({
@@ -42,6 +52,19 @@ export async function authRateLimit(request: FastifyRequest, reply: FastifyReply
   applyHeaders(reply, result);
   if (!result.allowed) {
     throw ApiError.rateLimited("Too many authentication attempts — try again later");
+  }
+
+  const body = request.body as { email?: unknown } | null | undefined;
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : null;
+  if (!email) return;
+
+  const emailResult = await rateLimiter.checkLimit({
+    identifier: `auth:email:${email}`,
+    limit: env.RATE_LIMIT_AUTH_EMAIL_MAX,
+    window: env.RATE_LIMIT_AUTH_WINDOW_SECONDS,
+  });
+  if (!emailResult.allowed) {
+    throw ApiError.rateLimited("Too many authentication attempts for this account — try again later");
   }
 }
 

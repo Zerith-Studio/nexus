@@ -118,6 +118,12 @@ export const env = {
   // to something much closer to the ticket's example.
   RATE_LIMIT_AUTH_MAX: Number(process.env.RATE_LIMIT_AUTH_MAX ?? 50),
   RATE_LIMIT_AUTH_WINDOW_SECONDS: Number(process.env.RATE_LIMIT_AUTH_WINDOW_SECONDS ?? 60),
+  // Per-account, same window as the IP limit above — closes the gap the
+  // IP-only limit leaves open: credential stuffing against one specific
+  // account, distributed across many source IPs, never trips a per-IP
+  // bucket at all. Deliberately tighter than the IP limit (which has to
+  // stay generous for shared-IP scenarios like NAT/corporate networks).
+  RATE_LIMIT_AUTH_EMAIL_MAX: Number(process.env.RATE_LIMIT_AUTH_EMAIL_MAX ?? 10),
   RATE_LIMIT_CHAT_ORG_RPM: Number(process.env.RATE_LIMIT_CHAT_ORG_RPM ?? 30),
   RATE_LIMIT_CHAT_USER_RPM: Number(process.env.RATE_LIMIT_CHAT_USER_RPM ?? 20),
   // Org-scoped, not per-user — matches how usage/billing is tracked
