@@ -1,0 +1,42 @@
+-- Note: prisma's diff engine also proposed `DROP INDEX
+-- "document_chunk_embedding_idx"` here — the same recurring false-positive
+-- already documented in 20260717154011_add_organization_usage_limit and
+-- several migrations since (the hand-written HNSW index has no
+-- Prisma-schema representation). Deliberately omitted.
+--
+-- Fixes the same class of bug the DocumentChunk composite index
+-- (migration 20260720120000) fixed for retrieval, here for
+-- GET /conversations?knowledgeBaseId=...: that route's Conversation query
+-- filters "organizationId" = $1 AND "knowledgeBaseId" = $2 (plus RLS's own
+-- implicit organizationId filter) ORDER BY "createdAt" DESC, but neither
+-- existing Conversation index covers knowledgeBaseId — so a KB-scoped
+-- conversation list was satisfied by scanning the (organizationId,
+-- createdAt) index across every conversation in the org, across every KB
+-- it owns, filtering out non-matching rows afterward. Cost scaled with
+-- the org's total conversation count, not the target KB's.
+--
+-- (organizationId, knowledgeBaseId, createdAt) — equality columns first,
+-- sort column last — lets one index satisfy both the WHERE and the
+-- ORDER BY for the KB-scoped case with no separate sort step.
+--
+-- Added alongside the existing (organizationId, createdAt) index, not in
+-- place of it: unlike DocumentChunk's old single-column index (fully
+-- redundant once superseded, later dropped in 20260720120001), that index
+-- is not redundant here. GET /conversations without a knowledgeBaseId
+-- filter still needs it — a 3-column index with knowledgeBaseId in the
+-- middle cannot serve that case's ORDER BY as directly, since rows would
+-- be grouped by knowledgeBaseId first rather than globally ordered by
+-- createdAt across every KB in the org. Two real, distinct query shapes,
+-- one index each.
+--
+-- CONCURRENTLY, not a plain CREATE INDEX, for the same reason as the
+-- DocumentChunk migration this follows: Conversation is written on every
+-- new chat session and read on every conversation-list page load in
+-- production, so a migration cannot take the ACCESS EXCLUSIVE lock a
+-- normal CREATE INDEX briefly holds while it scans the table. This is
+-- deliberately the only statement in this file — verified empirically
+-- (see the DocumentChunk migration's comment) that `prisma migrate
+-- deploy` wraps a multi-statement migration.sql in an implicit
+-- transaction, and Postgres refuses to run CREATE INDEX CONCURRENTLY
+-- inside one.
+CREATE INDEX CONCURRENTLY "Conversation_organizationId_knowledgeBaseId_createdAt_idx" ON "Conversation"("organizationId", "knowledgeBaseId", "createdAt");

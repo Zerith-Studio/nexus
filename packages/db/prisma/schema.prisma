@@ -500,6 +500,28 @@ model Conversation {
   knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
   messages      Message[]
 
+  // (organizationId, createdAt) alone serves GET /conversations when it's
+  // NOT filtered by knowledgeBaseId (routes/conversations.ts) — that
+  // query's WHERE and ORDER BY are both satisfied by this index, kept
+  // as-is. But the same route also accepts an optional knowledgeBaseId
+  // filter, and neither index above covers that column at all, so that
+  // request path fetches every conversation in the org (potentially
+  // every KB's worth) via the index above and then discards non-matching
+  // rows in a Filter step — cost scales with the org's total conversation
+  // count, not the target KB's, the exact same shape of bug the
+  // DocumentChunk composite index (migration 20260720120000) fixed for
+  // retrieval. See that migration's comment for the fuller writeup this
+  // one follows.
+  //
+  // Deliberately a THIRD index, not a replacement for the one above: a
+  // 3-column (organizationId, knowledgeBaseId, createdAt) index cannot
+  // serve the no-filter case's ORDER BY as efficiently on its own — once
+  // knowledgeBaseId is unconstrained, rows are grouped by KB first, not
+  // globally ordered by createdAt across every KB in the org — so unlike
+  // DocumentChunk's old single-column index (verifiably fully redundant
+  // once superseded), this org has two real, distinct query shapes and
+  // needs an index for each.
+  @@index([organizationId, knowledgeBaseId, createdAt])
   @@index([organizationId, createdAt])
 }
 
