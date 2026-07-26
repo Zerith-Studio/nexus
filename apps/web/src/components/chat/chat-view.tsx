@@ -42,7 +42,14 @@ export function ChatView({
     initialMessages,
   });
 
-  const documents = useDocuments(knowledgeBase.id, organizationId);
+  // limit: 100 (the API's max) rather than the default 20 — this feeds the
+  // citation fileNames map below, and citations resolve by relevance, not
+  // recency, so a cited document easily falls outside the 20 most
+  // recently uploaded. Still a cap, not exhaustive pagination (this view
+  // only needs names for display, not the full document list), so a KB
+  // with >100 documents can still show an unresolved citation name — the
+  // citation UI already degrades gracefully to "Source N" for that case.
+  const documents = useDocuments(knowledgeBase.id, organizationId, 100);
   const fileNames = useMemo(() => {
     const map: Record<string, string> = {};
     for (const doc of documents.data?.data ?? []) map[doc.id] = doc.fileName;
