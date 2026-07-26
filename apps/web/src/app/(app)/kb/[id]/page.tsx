@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeftIcon,
@@ -15,7 +15,7 @@ import {
 import { useSession } from "@/lib/session-context";
 import { formatBytes } from "@/lib/utils";
 import { useKnowledgeBase } from "@/hooks/use-knowledge-bases";
-import { useDocuments } from "@/hooks/use-documents";
+import { useInfiniteDocuments } from "@/hooks/use-documents";
 import { PageHeader } from "@/components/layout/page-header";
 import { UploadDropzone } from "@/components/kb/upload-dropzone";
 import { DocumentsTable } from "@/components/kb/documents-table";
@@ -46,8 +46,8 @@ export default function KnowledgeBaseDetailPage({
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const kb = useKnowledgeBase(id, currentOrganization.id);
-  const documents = useDocuments(id, currentOrganization.id);
-  const docs = documents.data?.data ?? [];
+  const documents = useInfiniteDocuments(id, currentOrganization.id);
+  const docs = useMemo(() => documents.data?.pages.flatMap((page) => page.data) ?? [], [documents.data]);
 
   if (kb.isLoading) {
     return (
@@ -133,6 +133,15 @@ export default function KnowledgeBaseDetailPage({
             <h2 className="mb-3 text-h4">Documents</h2>
             {documents.isLoading ? (
               <Skeleton className="h-48 w-full rounded-xl" />
+            ) : documents.isError && docs.length === 0 ? (
+              // A failed fetchNextPage() also flips the infinite query's
+              // overall isError — checked here alongside docs.length so a
+              // load-more failure (data from earlier pages still valid)
+              // doesn't blow away an already-successfully-loaded first
+              // page. See DocumentsTable's own isLoadMoreError for that
+              // case: the table stays mounted and shows an inline retry
+              // instead of this full-section replacement.
+              <ErrorState description="We couldn't load this knowledge base's documents." onRetry={() => documents.refetch()} />
             ) : docs.length === 0 ? (
               <EmptyState
                 icon={FileTextIcon}
@@ -141,7 +150,15 @@ export default function KnowledgeBaseDetailPage({
               />
             ) : (
               <div className="overflow-hidden rounded-xl border border-border">
-                <DocumentsTable documents={docs} knowledgeBaseId={id} organizationId={currentOrganization.id} />
+                <DocumentsTable
+                  documents={docs}
+                  knowledgeBaseId={id}
+                  organizationId={currentOrganization.id}
+                  hasNextPage={documents.hasNextPage}
+                  isFetchingNextPage={documents.isFetchingNextPage}
+                  isLoadMoreError={documents.isFetchNextPageError}
+                  onLoadMore={() => documents.fetchNextPage()}
+                />
               </div>
             )}
           </section>

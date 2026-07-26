@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   completeDocument,
@@ -16,14 +16,44 @@ export function documentKeys(knowledgeBaseId: string) {
   return ["documents", knowledgeBaseId] as const;
 }
 
-export function useDocuments(knowledgeBaseId: string, organizationId: string) {
+// Deliberately a child of documentKeys(id), not a sibling — invalidating
+// documentKeys(id) (every mutation below already does this) prefix-matches
+// this key too, so upload/delete/retry keep the paginated list in sync
+// for free, with no changes needed to those mutations' onSuccess handlers.
+function infiniteDocumentKeys(knowledgeBaseId: string) {
+  return [...documentKeys(knowledgeBaseId), "infinite"] as const;
+}
+
+export function useDocuments(knowledgeBaseId: string, organizationId: string, limit?: number) {
   return useQuery({
-    queryKey: documentKeys(knowledgeBaseId),
-    queryFn: () => listDocuments(knowledgeBaseId, organizationId),
+    queryKey: limit ? [...documentKeys(knowledgeBaseId), { limit }] : documentKeys(knowledgeBaseId),
+    queryFn: () => listDocuments(knowledgeBaseId, organizationId, undefined, limit),
     enabled: Boolean(knowledgeBaseId && organizationId),
     refetchInterval: (query) => {
       const documents = query.state.data?.data ?? [];
       return documents.some((doc) => ACTIVE_STATUSES.has(doc.status)) ? 3_000 : false;
+    },
+  });
+}
+
+/**
+ * Cursor-paginated document list for DocumentsTable — "Load more", not
+ * page 1 only. Polls (same 3s interval and QUEUED/PROCESSING trigger as
+ * useDocuments) across every page already loaded, not just the first,
+ * so a status flip on a document from page 2+ still shows up live.
+ */
+export function useInfiniteDocuments(knowledgeBaseId: string, organizationId: string) {
+  return useInfiniteQuery({
+    queryKey: infiniteDocumentKeys(knowledgeBaseId),
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+      listDocuments(knowledgeBaseId, organizationId, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: Boolean(knowledgeBaseId && organizationId),
+    refetchInterval: (query) => {
+      const pages = query.state.data?.pages ?? [];
+      const anyActive = pages.some((page) => page.data.some((doc) => ACTIVE_STATUSES.has(doc.status)));
+      return anyActive ? 3_000 : false;
     },
   });
 }

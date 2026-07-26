@@ -2,7 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { MoreHorizontalIcon, RotateCwIcon, SearchIcon, SearchXIcon, TrashIcon } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  Loader2Icon,
+  MoreHorizontalIcon,
+  RotateCwIcon,
+  SearchIcon,
+  SearchXIcon,
+  TriangleAlertIcon,
+  TrashIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -25,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyState } from "@/components/ui/empty-state";
 import { DocumentStatusBadge } from "@/components/kb/document-status-badge";
 import { useDeleteDocument, useRetryDocument } from "@/hooks/use-documents";
+import { fadeUp } from "@/lib/motion";
 import { formatBytes } from "@/lib/utils";
 import type { Document, DocumentStatus } from "@/lib/types";
 
@@ -40,15 +50,31 @@ export function DocumentsTable({
   documents,
   knowledgeBaseId,
   organizationId,
+  hasNextPage = false,
+  isFetchingNextPage = false,
+  isLoadMoreError = false,
+  onLoadMore,
 }: {
   documents: Document[];
   knowledgeBaseId: string;
   organizationId: string;
+  /** Pagination — all optional so this component still works standalone
+   * (e.g. in a future context with a fully-loaded, unpaginated list)
+   * without every caller having to wire through pagination it doesn't have. */
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+  /** True when the most recent fetchNextPage() call failed — distinct
+   * from the initial-load error, which the page-level ErrorState already
+   * owns (see kb/[id]/page.tsx). Retrying is just calling onLoadMore
+   * again; react-query's fetchNextPage doesn't need special reset. */
+  isLoadMoreError?: boolean;
+  onLoadMore?: () => void;
 }) {
   const retryDocument = useRetryDocument(knowledgeBaseId, organizationId);
   const deleteDocument = useDeleteDocument(knowledgeBaseId, organizationId);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | "all">("all");
+  const reducedMotion = useReducedMotion();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -58,6 +84,12 @@ export function DocumentsTable({
       return true;
     });
   }, [documents, query, statusFilter]);
+
+  // Filtering only ever runs over documents already fetched — a match on
+  // an unloaded page can't show up yet. Surfaced only once there's both a
+  // narrowing filter active AND more to load, so it doesn't clutter the
+  // common case (no filter, or already-exhaustive list).
+  const filterMayBeIncomplete = hasNextPage && (query.trim() !== "" || statusFilter !== "all");
 
   return (
     <div className="space-y-3">
@@ -87,7 +119,23 @@ export function DocumentsTable({
 
       {filtered.length === 0 ? (
         <div className="p-6">
-          <EmptyState icon={SearchXIcon} title="No matching documents" description="Try a different search term or status filter." />
+          <EmptyState
+            icon={SearchXIcon}
+            title="No matching documents"
+            description={
+              filterMayBeIncomplete
+                ? "No matches in what's loaded so far — load more to keep searching, or try a different term."
+                : "Try a different search term or status filter."
+            }
+            action={
+              filterMayBeIncomplete && onLoadMore ? (
+                <Button variant="outline" onClick={onLoadMore} disabled={isFetchingNextPage}>
+                  {isFetchingNextPage && <Loader2Icon className="animate-spin" />}
+                  {isLoadMoreError ? "Try again" : "Load more"}
+                </Button>
+              ) : undefined
+            }
+          />
         </div>
       ) : (
         <Table>
@@ -158,6 +206,31 @@ export function DocumentsTable({
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {filtered.length > 0 && filterMayBeIncomplete && (
+        <p className="px-3 pb-1 text-xs text-muted-foreground">
+          Showing matches from what&apos;s loaded so far — load more to search the rest.
+        </p>
+      )}
+
+      {filtered.length > 0 && (hasNextPage || isLoadMoreError) && onLoadMore && (
+        <motion.div
+          initial={reducedMotion ? false : "hidden"}
+          animate="show"
+          variants={fadeUp}
+          className="flex flex-col items-center gap-2 border-t border-border px-3 py-4"
+        >
+          {isLoadMoreError && (
+            <p className="flex items-center gap-1.5 text-xs text-destructive">
+              <TriangleAlertIcon className="size-3.5 shrink-0" /> Couldn&apos;t load more documents.
+            </p>
+          )}
+          <Button variant="outline" size="sm" onClick={onLoadMore} disabled={isFetchingNextPage} className="w-full sm:w-auto">
+            {isFetchingNextPage && <Loader2Icon className="animate-spin" />}
+            {isFetchingNextPage ? "Loading…" : isLoadMoreError ? "Try again" : "Load more"}
+          </Button>
+        </motion.div>
       )}
     </div>
   );

@@ -1,9 +1,9 @@
 import { apiFetch } from "@/lib/api-client";
 import type { Document, Paginated } from "@/lib/types";
 
-export function listDocuments(knowledgeBaseId: string, organizationId: string, cursor?: string) {
+export function listDocuments(knowledgeBaseId: string, organizationId: string, cursor?: string, limit?: number) {
   return apiFetch<Paginated<Document>>(`/kb/${knowledgeBaseId}/documents`, {
-    query: { organizationId, cursor },
+    query: { organizationId, cursor, limit },
   });
 }
 
