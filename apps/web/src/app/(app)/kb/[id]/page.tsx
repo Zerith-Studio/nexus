@@ -149,7 +149,7 @@ export default function KnowledgeBaseDetailPage({
                 description="Upload PDFs or text files above to start building this knowledge base."
               />
             ) : (
-              <div className="overflow-hidden rounded-xl border border-border">
+              <Card className="overflow-hidden">
                 <DocumentsTable
                   documents={docs}
                   knowledgeBaseId={id}
@@ -159,7 +159,7 @@ export default function KnowledgeBaseDetailPage({
                   isLoadMoreError={documents.isFetchNextPageError}
                   onLoadMore={() => documents.fetchNextPage()}
                 />
-              </div>
+              </Card>
             )}
           </section>
 

@@ -8,6 +8,7 @@ import { OrganizationDetailsCard } from "@/components/settings/organization-deta
 import { MembersTable } from "@/components/settings/members-table";
 import { InviteMemberDialog } from "@/components/settings/invite-member-dialog";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 export default function OrganizationSettingsPage() {
   const { currentOrganization } = useSession();
@@ -27,9 +28,9 @@ export default function OrganizationSettingsPage() {
             </Button>
           )}
         </div>
-        <div className="rounded-xl border border-border">
+        <Card>
           <MembersTable organizationId={currentOrganization.id} />
-        </div>
+        </Card>
       </div>
 
       <InviteMemberDialog organizationId={currentOrganization.id} open={inviteOpen} onOpenChange={setInviteOpen} />

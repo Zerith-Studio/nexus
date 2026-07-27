@@ -10,6 +10,7 @@ import { useApiKeys, useRevokeApiKey } from "@/hooks/use-api-keys";
 import { CreateApiKeyDialog } from "@/components/settings/create-api-key-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -63,7 +64,7 @@ export default function ApiKeysPage() {
           }
         />
       ) : (
-        <div className="rounded-xl border border-border">
+        <Card>
           <Table>
             <TableHeader>
               <TableRow>
@@ -110,7 +111,7 @@ export default function ApiKeysPage() {
               })}
             </TableBody>
           </Table>
-        </div>
+        </Card>
       )}
 
       <CreateApiKeyDialog organizationId={currentOrganization.id} open={createOpen} onOpenChange={setCreateOpen} />
