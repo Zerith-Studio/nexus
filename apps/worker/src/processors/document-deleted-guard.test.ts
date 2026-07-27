@@ -100,11 +100,16 @@ describe("pipeline stages skip work for a document deleted mid-flight", () => {
     const data: DocumentJobData = { organizationId, documentId: document.id, knowledgeBaseId };
 
     const flowProducer = new FlowProducer({ connection: redisConnection });
-    // No real processing worker for QUEUE_NAMES.processing — this test
-    // only cares whether chunk-text itself does work, not whether the
-    // parent process-document job later runs (it won't, since
-    // failParentOnFailure means a DocumentDeletedError here stops the
-    // flow before process-document is ever eligible).
+    // chunk-text's own guard requires job.parent to be set (see
+    // chunk-text.ts: "must run as part of the process-document flow"), so
+    // the flow here mirrors ingestion-flow.ts's real production shape
+    // exactly — process-document (root, queue=processing) -> chunk-text ->
+    // extract-text — rather than making chunk-text a flow root itself. No
+    // worker runs QUEUE_NAMES.processing: failParentOnFailure propagates
+    // chunk-text's DocumentDeletedError up to process-document via BullMQ's
+    // own Redis-side bookkeeping, which needs no active worker on the
+    // parent's queue, and this test only cares whether chunk-text itself
+    // did work.
     const extractionWorker = new Worker(
       QUEUE_NAMES.extraction,
       async (job) => (job.name === JOB_NAMES.extractText ? ({ pages: [{ pageNumber: 1, text: "hello world" }] } satisfies ExtractedDocument) : chunkTextProcessor(job)),
@@ -115,22 +120,31 @@ describe("pipeline stages skip work for a document deleted mid-flight", () => {
     try {
       const chunkJobId = `${JOB_NAMES.chunkText}-${document.id}`;
       await flowProducer.add({
-        name: JOB_NAMES.chunkText,
-        queueName: QUEUE_NAMES.extraction,
+        name: JOB_NAMES.processDocument,
+        queueName: QUEUE_NAMES.processing,
         data,
-        opts: { ...JOB_OPTS, jobId: chunkJobId },
+        opts: { ...JOB_OPTS, jobId: `${JOB_NAMES.processDocument}-${document.id}` },
         children: [
           {
-            name: JOB_NAMES.extractText,
+            name: JOB_NAMES.chunkText,
             queueName: QUEUE_NAMES.extraction,
             data,
-            opts: { ...JOB_OPTS, jobId: `${JOB_NAMES.extractText}-${document.id}` },
+            opts: { ...JOB_OPTS, jobId: chunkJobId },
+            children: [
+              {
+                name: JOB_NAMES.extractText,
+                queueName: QUEUE_NAMES.extraction,
+                data,
+                opts: { ...JOB_OPTS, jobId: `${JOB_NAMES.extractText}-${document.id}` },
+              },
+            ],
           },
         ],
       });
 
-      // Poll the chunk-text job itself (there's no process-document parent
-      // in this flow to poll Document.status against) until it settles.
+      // Poll the chunk-text job itself, not its process-document parent —
+      // it's the job under test, it settles before the parent does, and
+      // nothing here processes QUEUE_NAMES.processing anyway.
       const extractionQueue = new Queue(QUEUE_NAMES.extraction, { connection: redisConnection });
       try {
         await waitForJobSettled(extractionQueue, chunkJobId);
