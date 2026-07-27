@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { DatabaseIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { DatabaseIcon, PlusIcon, SearchIcon, SearchXIcon } from "lucide-react";
 
 import { useSession } from "@/lib/session-context";
 import { staggerContainer, fadeUp } from "@/lib/motion";
@@ -90,9 +90,11 @@ export default function KnowledgeBasesPage() {
             }
           />
         ) : filtered.length === 0 ? (
-          <p className="py-16 text-center text-sm text-muted-foreground">
-            No knowledge bases match &ldquo;{search}&rdquo;.
-          </p>
+          <EmptyState
+            icon={SearchXIcon}
+            title="No matching knowledge bases"
+            description={`No knowledge bases match "${search}".`}
+          />
         ) : reducedMotion ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((kb) => (
