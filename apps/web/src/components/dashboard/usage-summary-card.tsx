@@ -1,7 +1,7 @@
 import { ZapIcon } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { UsageSparkline } from "@/components/dashboard/usage-sparkline";
+import { UsageBarChart } from "@/components/dashboard/usage-bar-chart";
 import type { UsageBreakdownRow } from "@/lib/types";
 
 export function UsageSummaryCard({
@@ -21,7 +21,7 @@ export function UsageSummaryCard({
           <p className="mt-1.5 text-h2 tabular-nums">{requestCount.toLocaleString()}</p>
         </div>
         <div className="w-32 shrink-0 sm:w-44">
-          <UsageSparkline breakdown={breakdown} />
+          <UsageBarChart breakdown={breakdown} days={14} height="h-14" />
         </div>
       </CardContent>
     </Card>

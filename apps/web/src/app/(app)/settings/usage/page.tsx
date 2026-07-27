@@ -3,7 +3,7 @@
 import { useSession } from "@/lib/session-context";
 import { useUsage } from "@/hooks/use-usage";
 import { StatCard } from "@/components/dashboard/stat-card";
-import { UsageChart } from "@/components/settings/usage-chart";
+import { UsageBarChart } from "@/components/dashboard/usage-bar-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -57,7 +57,7 @@ export default function UsagePage() {
           <CardTitle className="text-base">Daily token usage</CardTitle>
         </CardHeader>
         <CardContent>
-          <UsageChart breakdown={breakdown} />
+          <UsageBarChart breakdown={breakdown} days={30} height="h-40" />
         </CardContent>
       </Card>
 
