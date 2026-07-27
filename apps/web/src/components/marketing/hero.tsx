@@ -52,7 +52,7 @@ export function Hero() {
         </motion.div>
       )}
 
-      <div className="mx-auto mt-14 max-w-5xl">
+      <div id="how-it-works" className="mx-auto mt-14 max-w-5xl scroll-mt-24">
         {reducedMotion ? (
           <PipelineDemo />
         ) : (

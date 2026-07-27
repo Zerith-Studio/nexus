@@ -1,7 +1,8 @@
 import { CheckIcon, Loader2Icon } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardAction } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Tier } from "@/lib/tiers";
 
@@ -19,7 +20,12 @@ export function PricingTierCard({
   loading: boolean;
 }) {
   return (
-    <Card className={cn("gap-0 p-6", tier.highlighted && "border-primary/50")}>
+    <Card className={cn("relative gap-0 p-6", tier.highlighted && "border-primary/50 bg-accent/40")}>
+      {tier.highlighted && (
+        <CardAction>
+          <Badge>Recommended</Badge>
+        </CardAction>
+      )}
       <h3 className="text-h4">{tier.name}</h3>
       <p className="mt-1.5 text-sm text-muted-foreground">{tier.description}</p>
 

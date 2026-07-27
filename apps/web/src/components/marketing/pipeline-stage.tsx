@@ -11,20 +11,30 @@ export function PipelineStage({
   label,
   active,
   complete,
+  onSelect,
 }: {
   icon: LucideIcon;
   label: string;
   active: boolean;
   complete: boolean;
+  /** Jumps the demo to this stage and hands control to the visitor —
+   * see PipelineDemo's own comment on why autoplay stops once clicked. */
+  onSelect: () => void;
 }) {
   const lit = active || complete;
   return (
-    <div className="flex shrink-0 flex-col items-center gap-2.5 px-1">
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={`Show the ${label} stage`}
+      aria-pressed={active}
+      className="flex shrink-0 flex-col items-center gap-2.5 rounded-lg px-1 outline-none transition-transform duration-150 ease-out active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+    >
       <motion.div
         animate={{ scale: active ? 1.08 : 1 }}
         transition={transition(duration.moderate, ease.out)}
         className={cn(
-          "flex size-10 items-center justify-center rounded-xl border bg-card transition-colors duration-300",
+          "flex size-10 items-center justify-center rounded-xl border bg-card transition-colors duration-300 hover:border-primary/30",
           lit ? "border-primary/50 ring-4 ring-primary/10" : "border-border",
         )}
       >
@@ -43,6 +53,6 @@ export function PipelineStage({
       >
         {label}
       </span>
-    </div>
+    </button>
   );
 }

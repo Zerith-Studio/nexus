@@ -35,16 +35,23 @@ export function PipelineDemo() {
   const inView = useInView(containerRef, { amount: 0.4 });
   const reducedMotion = useReducedMotion();
   const [activeStage, setActiveStage] = useState(0);
+  // Set once a visitor clicks a stage — hands control to them instead of
+  // fighting their click with the next autoplay tick. Someone actively
+  // exploring the demo shouldn't have it autoplay out from under them.
+  const [userControlled, setUserControlled] = useState(false);
 
   useEffect(() => {
-    if (!inView || reducedMotion) return;
+    if (!inView || reducedMotion || userControlled) return;
     const id = setInterval(() => {
       setActiveStage((stage) => (stage + 1) % STAGES.length);
     }, STAGE_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [inView, reducedMotion]);
+  }, [inView, reducedMotion, userControlled]);
 
-  const displayStage = reducedMotion ? STAGES.length - 1 : activeStage;
+  // Reduced-motion visitors get the resting "complete" state by default
+  // (no auto-cycling to sit through), but a click still works — reduced
+  // motion means no unrequested animation, not no interactivity.
+  const displayStage = reducedMotion && !userControlled ? STAGES.length - 1 : activeStage;
 
   return (
     <div ref={containerRef} className="rounded-2xl border border-border bg-card/40 p-6 sm:p-10">
@@ -58,6 +65,10 @@ export function PipelineDemo() {
                 label={stage.label}
                 active={displayStage === index}
                 complete={displayStage > index}
+                onSelect={() => {
+                  setActiveStage(index);
+                  setUserControlled(true);
+                }}
               />
             </div>
           ))}
