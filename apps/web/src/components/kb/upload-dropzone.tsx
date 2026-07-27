@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useUploadDocument } from "@/hooks/use-documents";
 import { isApiError } from "@/lib/api-error";
+import { transition } from "@/lib/motion";
 import { Progress } from "@/components/ui/progress";
 
 const ACCEPT = SUPPORTED_DOCUMENT_MIME_TYPES.join(",");
@@ -134,7 +135,7 @@ export function UploadDropzone({
                 initial={reducedMotion ? false : { opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={reducedMotion ? undefined : { opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }}
-                transition={reducedMotion ? { duration: 0 } : { duration: 0.2, ease: "easeOut" }}
+                transition={reducedMotion ? { duration: 0 } : transition()}
                 className="flex items-center gap-3 overflow-hidden rounded-md border border-border bg-card px-3 py-2.5 text-sm"
               >
                 {item.status === "uploading" && <FileIcon className="size-4 shrink-0 text-muted-foreground" />}

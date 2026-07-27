@@ -2,6 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2Icon, ClockIcon, Loader2Icon, TriangleAlertIcon, UploadIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { transition } from "@/lib/motion";
 import type { DocumentStatus } from "@/lib/types";
 
 const STATUS_CONFIG: Record<
@@ -25,7 +26,7 @@ export function DocumentStatusBadge({ status }: { status: DocumentStatus }) {
       key={status}
       initial={reducedMotion ? false : { opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={reducedMotion ? { duration: 0 } : { duration: 0.25, ease: "easeOut" }}
+      transition={reducedMotion ? { duration: 0 } : transition()}
       className="inline-block"
     >
       <Badge variant={config.variant}>

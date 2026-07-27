@@ -6,6 +6,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { CheckIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { transition } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
@@ -65,6 +66,7 @@ export function GettingStartedChecklist({
         initial={reducedMotion ? false : { opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         exit={reducedMotion ? undefined : { opacity: 0, y: -8 }}
+        transition={reducedMotion ? { duration: 0 } : transition()}
         className="relative overflow-hidden rounded-xl border border-border bg-card p-5"
       >
         <button

@@ -118,6 +118,13 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 
+  /* Overrides Tailwind's built-in ease-out with this project's own strong
+     curve — identical to src/lib/motion.ts's `ease.out` token, so a CSS
+     `ease-out` class and a framer-motion `ease.out` import now resolve to
+     the exact same curve everywhere, instead of Tailwind's weaker default
+     ease-out (which lacks the punch that makes UI motion feel intentional). */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
