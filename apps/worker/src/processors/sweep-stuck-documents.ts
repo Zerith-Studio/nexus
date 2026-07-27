@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { prisma, withTenantTransaction } from "@raas/db";
 import { JOB_NAMES, QUEUE_NAMES } from "@raas/shared";
 import { FlowProducer, type Job } from "bullmq";
@@ -7,6 +9,31 @@ import { createJobLogger } from "../lib/job-logger.js";
 import { redisConnection } from "../lib/redis.js";
 
 const flowProducer = new FlowProducer({ connection: redisConnection });
+
+// One global lock, not per-org — this is a single cross-tenant
+// maintenance pass, not something sharded by tenant (see this file's own
+// "Scans across every organization" comment below). Exported so the test
+// file can seed/clear it directly rather than duplicating the string.
+export const SWEEP_LOCK_KEY = "sweep:stuck-documents:lock";
+
+// Both scripts only ever act on OUR OWN lock (token match) — a plain
+// GET-then-DEL/PEXPIRE from application code would risk clobbering a
+// DIFFERENT run's lock if ours had already expired and been re-acquired
+// by someone else between the GET and the write. Same eval-a-Lua-script
+// idiom packages/rate-limit/src/rate-limiter.ts already uses for its own
+// atomic reserve/settle operations.
+const RELEASE_LOCK_SCRIPT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+const RENEW_LOCK_SCRIPT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+end
+return 0
+`;
 
 const RETRY_JOB_OPTS = {
   attempts: 3,
@@ -56,6 +83,12 @@ export interface SweepResult {
   checked: number;
   failed: number;
   retried: number;
+  /** True when this call did no work because another sweep pass already
+   * held the lock — never set alongside a non-zero checked/failed/retried,
+   * since a skipped pass touches nothing. Absent (not false) on a normal
+   * completed pass, so existing callers that only read checked/failed/
+   * retried are unaffected. */
+  skipped?: true;
 }
 
 function failureReason(thresholdMs: number): string {
@@ -92,10 +125,34 @@ function failureReason(thresholdMs: number): string {
  * resets nothing — it just increments the same counter further, same as
  * it always has).
  *
- * All three env-derived numbers are accepted as overridable options — not
- * for production flexibility beyond the env vars themselves, but so tests
- * can exercise the auto-retry path, a tight threshold, and a low retry cap
- * without reloading the env-derived module singleton.
+ * All env-derived numbers are accepted as overridable options — not for
+ * production flexibility beyond the env vars themselves, but so tests can
+ * exercise the auto-retry path, a tight threshold, a low retry cap, a
+ * small batch size, and a short lock TTL without reloading the
+ * env-derived module singleton.
+ *
+ * Two more properties on top of the original single-pass version:
+ *
+ *  - Bounded batches: organizations are read via cursor pagination
+ *    (SWEEP_ORG_BATCH_SIZE per page, ordered by id — Organization's own
+ *    primary key, so no new index is needed) instead of one unbounded
+ *    findMany() over the whole table. Memory use is O(batch size), not
+ *    O(total organizations), regardless of how large the platform grows.
+ *
+ *  - Overlap protection: a Redis lock (SWEEP_LOCK_KEY) is held for the
+ *    whole pass and renewed after every batch, so two sweep passes can
+ *    never run concurrently — whether that's two ticks of the same
+ *    repeatable schedule overlapping because a prior pass ran long, or
+ *    two horizontally-scaled worker processes both picking up a
+ *    schedule tick (WORKER_SWEEP_CONCURRENCY only bounds concurrency
+ *    *within* one process; it says nothing about a second process). A
+ *    call that can't acquire the lock returns immediately with
+ *    `skipped: true` rather than failing — losing a race for this lock
+ *    is an expected, benign outcome, not an error to retry or alert on.
+ *    The lock is released in a `finally` so a thrown error mid-pass
+ *    still frees it immediately; if the process is killed outright
+ *    (no chance to run `finally`), the lock still self-expires after
+ *    SWEEP_LOCK_TTL_MS, so a crash can never wedge future sweeps.
  *
  * `job` is optional so every existing direct caller (tests calling this
  * function outside of BullMQ entirely) keeps working unchanged — the real
@@ -107,57 +164,100 @@ function failureReason(thresholdMs: number): string {
  * added per document inside the loop.
  */
 export async function sweepStuckDocumentsProcessor(
-  options: { thresholdMs?: number; autoRetry?: boolean; maxAutoRetries?: number; job?: Job } = {},
+  options: {
+    thresholdMs?: number;
+    autoRetry?: boolean;
+    maxAutoRetries?: number;
+    orgBatchSize?: number;
+    lockTtlMs?: number;
+    job?: Job;
+  } = {},
 ): Promise<SweepResult> {
   const thresholdMs = options.thresholdMs ?? env.STUCK_DOCUMENT_THRESHOLD_MS;
   const autoRetry = options.autoRetry ?? env.STUCK_DOCUMENT_AUTO_RETRY;
   const maxAutoRetries = options.maxAutoRetries ?? env.STUCK_DOCUMENT_MAX_AUTO_RETRIES;
+  const orgBatchSize = options.orgBatchSize ?? env.SWEEP_ORG_BATCH_SIZE;
+  const lockTtlMs = options.lockTtlMs ?? env.SWEEP_LOCK_TTL_MS;
   const threshold = new Date(Date.now() - thresholdMs);
   const result: SweepResult = { checked: 0, failed: 0, retried: 0 };
   const jobLog = createJobLogger({ jobId: options.job?.id });
 
-  // Organization carries no organizationId of its own and has no RLS
-  // policy — reading ids off it is not a tenant-data read.
-  const organizations = await prisma.organization.findMany({ select: { id: true } });
+  const lockToken = randomUUID();
+  const acquired = await redisConnection.set(SWEEP_LOCK_KEY, lockToken, "PX", lockTtlMs, "NX");
+  if (acquired !== "OK") {
+    jobLog.info("stuck-document sweep skipped — another pass already holds the lock");
+    return { checked: 0, failed: 0, retried: 0, skipped: true };
+  }
 
-  for (const org of organizations) {
-    const stuck = await withTenantTransaction(org.id, (tx) =>
-      tx.document.findMany({
-        where: { status: { in: ["QUEUED", "PROCESSING"] }, updatedAt: { lt: threshold } },
-      }),
-    );
-    result.checked += stuck.length;
+  try {
+    // Organization carries no organizationId of its own and has no RLS
+    // policy — reading ids off it is not a tenant-data read. Ordered by
+    // id (the primary key) so cursor pagination is well-defined without
+    // a dedicated index.
+    let cursor: string | undefined;
+    for (;;) {
+      const organizations = await prisma.organization.findMany({
+        select: { id: true },
+        orderBy: { id: "asc" },
+        take: orgBatchSize,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
 
-    for (const document of stuck) {
-      const reason = failureReason(thresholdMs);
-      const docLog = jobLog.child({ organizationId: org.id, documentId: document.id });
+      for (const org of organizations) {
+        const stuck = await withTenantTransaction(org.id, (tx) =>
+          tx.document.findMany({
+            where: { status: { in: ["QUEUED", "PROCESSING"] }, updatedAt: { lt: threshold } },
+          }),
+        );
+        result.checked += stuck.length;
 
-      await withTenantTransaction(org.id, (tx) =>
-        tx.document.update({ where: { id: document.id }, data: { status: "FAILED", failureReason: reason } }),
-      );
-      result.failed++;
-      docLog.error({ previousStatus: document.status, stuckSince: document.updatedAt, failureReason: reason }, "stuck document marked FAILED by sweep");
+        for (const document of stuck) {
+          const reason = failureReason(thresholdMs);
+          const docLog = jobLog.child({ organizationId: org.id, documentId: document.id });
 
-      if (autoRetry) {
-        if (document.retryCount >= maxAutoRetries) {
-          const cappedReason = `${reason} — automatic retry limit (${maxAutoRetries}) reached; not re-enqueued, marked permanently failed.`;
           await withTenantTransaction(org.id, (tx) =>
-            tx.document.update({ where: { id: document.id }, data: { failureReason: cappedReason } }),
+            tx.document.update({ where: { id: document.id }, data: { status: "FAILED", failureReason: reason } }),
           );
-          docLog.error({ retryCount: document.retryCount, maxAutoRetries }, "stuck document reached its automatic retry limit — left FAILED");
-        } else {
-          await enqueueRetryFlow(document.id, org.id, document.knowledgeBaseId);
-          await withTenantTransaction(org.id, (tx) =>
-            tx.document.update({
-              where: { id: document.id },
-              data: { status: "QUEUED", failureReason: null, retryCount: { increment: 1 } },
-            }),
-          );
-          result.retried++;
-          docLog.info({ retryCount: document.retryCount + 1, maxAutoRetries }, "stuck document automatically re-enqueued for retry");
+          result.failed++;
+          docLog.error({ previousStatus: document.status, stuckSince: document.updatedAt, failureReason: reason }, "stuck document marked FAILED by sweep");
+
+          if (autoRetry) {
+            if (document.retryCount >= maxAutoRetries) {
+              const cappedReason = `${reason} — automatic retry limit (${maxAutoRetries}) reached; not re-enqueued, marked permanently failed.`;
+              await withTenantTransaction(org.id, (tx) =>
+                tx.document.update({ where: { id: document.id }, data: { failureReason: cappedReason } }),
+              );
+              docLog.error({ retryCount: document.retryCount, maxAutoRetries }, "stuck document reached its automatic retry limit — left FAILED");
+            } else {
+              await enqueueRetryFlow(document.id, org.id, document.knowledgeBaseId);
+              await withTenantTransaction(org.id, (tx) =>
+                tx.document.update({
+                  where: { id: document.id },
+                  data: { status: "QUEUED", failureReason: null, retryCount: { increment: 1 } },
+                }),
+              );
+              result.retried++;
+              docLog.info({ retryCount: document.retryCount + 1, maxAutoRetries }, "stuck document automatically re-enqueued for retry");
+            }
+          }
         }
       }
+
+      // A short page (fewer than requested) means we've reached the end
+      // of the table — no need to renew the lock for a batch that isn't
+      // coming.
+      if (organizations.length < orgBatchSize) break;
+      cursor = organizations[organizations.length - 1]!.id;
+      await redisConnection.eval(RENEW_LOCK_SCRIPT, 1, SWEEP_LOCK_KEY, lockToken, lockTtlMs);
     }
+  } finally {
+    // Best-effort: if this fails, the lock still self-expires within
+    // lockTtlMs (see this function's own doc comment) — a transient
+    // Redis error releasing the lock must never surface as this whole
+    // sweep pass having failed.
+    await redisConnection.eval(RELEASE_LOCK_SCRIPT, 1, SWEEP_LOCK_KEY, lockToken).catch((err) => {
+      jobLog.warn({ err }, "failed to release stuck-document sweep lock — it will expire on its own via TTL");
+    });
   }
 
   jobLog.info({ ...result }, "stuck-document sweep pass complete");

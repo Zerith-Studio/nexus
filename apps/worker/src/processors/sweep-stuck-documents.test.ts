@@ -12,7 +12,7 @@ import { Queue } from "bullmq";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { redisConnection } from "../lib/redis.js";
-import { sweepStuckDocumentsProcessor } from "./sweep-stuck-documents.js";
+import { SWEEP_LOCK_KEY, sweepStuckDocumentsProcessor } from "./sweep-stuck-documents.js";
 
 const THRESHOLD_MS = 1000;
 
@@ -32,11 +32,18 @@ describe("sweepStuckDocumentsProcessor", () => {
     kbB = await withTenantTransaction(orgB.id, (tx) =>
       tx.knowledgeBase.create({ data: { organizationId: orgB.id, name: "KB B", embeddingProvider: "openai", embeddingModel: "text-embedding-3-small", embeddingDim: 1536 } }),
     );
+    // Defensive, not just tidy: every test in this file calls the real
+    // processor against the real shared dev Redis instance, and a stale
+    // lock left by an unrelated process (a crashed prior run, a real
+    // worker's own scheduled sweep firing mid-suite) would make every
+    // test below spuriously see `skipped: true`.
+    await redisConnection.del(SWEEP_LOCK_KEY);
   });
 
   afterAll(async () => {
     await prisma.organization.delete({ where: { id: orgA.id } }).catch(() => undefined);
     await prisma.organization.delete({ where: { id: orgB.id } }).catch(() => undefined);
+    await redisConnection.del(SWEEP_LOCK_KEY);
   });
 
   async function createDocument(
@@ -168,5 +175,54 @@ describe("sweepStuckDocumentsProcessor", () => {
     // re-enqueued this pass — a capped document contributes to `failed`,
     // never to `retried`.
     expect(result.retried).toBe(0);
+  });
+
+  it("processes every organization across multiple bounded batches, not just the first", async () => {
+    const stuckAId = await createDocument(orgA.id, kbA.id, "QUEUED", THRESHOLD_MS * 3);
+    const stuckBId = await createDocument(orgB.id, kbB.id, "QUEUED", THRESHOLD_MS * 3);
+
+    // orgBatchSize: 1 forces at least two internal cursor-paginated pages
+    // for orgA/orgB alone — this is what actually exercises the
+    // cursor-advance-and-continue path, not just a batch size larger
+    // than the whole table (which would pass even with the pagination
+    // logic silently broken).
+    const result = await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS, orgBatchSize: 1 });
+
+    const docA = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: stuckAId } }));
+    const docB = await withTenantTransaction(orgB.id, (tx) => tx.document.findUnique({ where: { id: stuckBId } }));
+    expect(docA!.status).toBe("FAILED");
+    expect(docB!.status).toBe("FAILED");
+    expect(result.failed).toBeGreaterThanOrEqual(2);
+  });
+
+  it("skips the pass entirely when another sweep already holds the lock, touching nothing", async () => {
+    const stuckId = await createDocument(orgA.id, kbA.id, "QUEUED", THRESHOLD_MS * 3);
+
+    // Simulates a genuinely concurrent pass (a different token, exactly
+    // as a second process/tick holding the real lock would look) rather
+    // than something this call itself acquired.
+    const acquired = await redisConnection.set(SWEEP_LOCK_KEY, "some-other-run-token", "PX", 10_000, "NX");
+    expect(acquired).toBe("OK");
+
+    try {
+      const result = await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS });
+
+      expect(result).toEqual({ checked: 0, failed: 0, retried: 0, skipped: true });
+      const doc = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: stuckId } }));
+      expect(doc!.status).toBe("QUEUED"); // untouched — the pass never ran
+    } finally {
+      await redisConnection.del(SWEEP_LOCK_KEY);
+    }
+  });
+
+  it("releases its lock after completing, so an immediately-following pass is not skipped", async () => {
+    await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS });
+
+    const stuckId = await createDocument(orgA.id, kbA.id, "QUEUED", THRESHOLD_MS * 3);
+    const result = await sweepStuckDocumentsProcessor({ thresholdMs: THRESHOLD_MS });
+
+    expect(result.skipped).toBeUndefined();
+    const doc = await withTenantTransaction(orgA.id, (tx) => tx.document.findUnique({ where: { id: stuckId } }));
+    expect(doc!.status).toBe("FAILED");
   });
 });

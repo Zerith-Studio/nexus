@@ -164,6 +164,21 @@ export const env = {
   // gets re-enqueued forever" gap STUCK_DOCUMENT_AUTO_RETRY's own doc
   // comment names. Only consulted when STUCK_DOCUMENT_AUTO_RETRY is on.
   STUCK_DOCUMENT_MAX_AUTO_RETRIES: Number(process.env.STUCK_DOCUMENT_MAX_AUTO_RETRIES ?? 3),
+  // Bounds how many organizations a single sweep pass loads into memory
+  // at once (see sweep-stuck-documents.ts's cursor-paginated org loop) —
+  // previously an unbounded findMany() over every organization on the
+  // platform. 200 is comfortably above any real deployment's org count
+  // today while keeping one batch's memory footprint (id-only rows)
+  // trivial regardless of how large the platform grows.
+  SWEEP_ORG_BATCH_SIZE: requirePositiveInt("SWEEP_ORG_BATCH_SIZE", process.env.SWEEP_ORG_BATCH_SIZE, 200),
+  // TTL on the Redis lock that keeps two sweep passes from ever running
+  // concurrently (see sweep-stuck-documents.ts) — renewed after every org
+  // batch, so a legitimately-still-running pass never has its lock expire
+  // out from under it. Sized well above one batch's expected duration;
+  // if a worker process crashes mid-sweep, the lock self-expires within
+  // this window and the next scheduled tick picks the sweep back up
+  // rather than waiting on a lock nobody will ever release.
+  SWEEP_LOCK_TTL_MS: requirePositiveInt("SWEEP_LOCK_TTL_MS", process.env.SWEEP_LOCK_TTL_MS, 10 * 60 * 1000),
   // GET /health (see health-server.ts) — an orchestrator readiness probe,
   // not internet-facing traffic; not published to the host by default in
   // docker-compose.prod.yml, only reachable inside the compose network /
