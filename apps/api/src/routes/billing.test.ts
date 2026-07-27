@@ -298,6 +298,28 @@ describe("billing routes", () => {
   });
 
   describe("POST /billing/portal-session", () => {
+    // Invites and accepts as the given role directly (inviteMemberSchema
+    // allows ADMIN or MEMBER at invite time — no separate promotion step
+    // needed). Local to this file since knowledge-bases.test.ts's own
+    // inviteMember helper is hardcoded to MEMBER and isn't exported.
+    async function inviteMember(ownerCookie: string, orgId: string, email: string, role: "ADMIN" | "MEMBER"): Promise<string> {
+      const invite = await app.inject({
+        method: "POST",
+        url: `/organizations/${orgId}/invites`,
+        cookies: { [SESSION_COOKIE_NAME]: ownerCookie },
+        payload: { email, role },
+      });
+      const { token } = invite.json();
+
+      const signedUp = await signup(app, email, password, `Portal Session Member Org ${randomUUID().slice(0, 8)}`);
+      await app.inject({
+        method: "POST",
+        url: `/invites/${token}/accept`,
+        cookies: { [SESSION_COOKIE_NAME]: signedUp.sessionCookie },
+      });
+      return signedUp.sessionCookie;
+    }
+
     it("requires authentication", async () => {
       const response = await app.inject({
         method: "POST",
@@ -318,7 +340,13 @@ describe("billing routes", () => {
       expect(response.statusCode).toBe(404);
     });
 
-    it("returns 409 for an organization with no active Paddle subscription", async () => {
+    // No real Paddle customer/subscription exists for any org in this
+    // suite (see this file's header comment — customerPortalSessions.create
+    // is never actually reached), so a caller who clears the role check
+    // lands on 409 ("no active Paddle subscription"), not 200. That 409 —
+    // as opposed to the 403 a MEMBER gets below — is exactly what proves
+    // the role check passed for OWNER/ADMIN.
+    it("returns 409, not 403, for an OWNER — proving the role check passes and the request reaches the subscription check", async () => {
       const fresh = await signup(app, `billing-fresh-${suffix}@example.com`, password, `Billing Fresh Org ${suffix}`);
       const response = await app.inject({
         method: "POST",
@@ -327,6 +355,37 @@ describe("billing routes", () => {
         payload: { organizationId: fresh.organizationId },
       });
       expect(response.statusCode).toBe(409);
+    });
+
+    it("returns 409, not 403, for an ADMIN — proving the role check passes and the request reaches the subscription check", async () => {
+      // A fresh org, not the shared `organizationId` — the webhook tests
+      // above already gave that one a real paddleCustomerId/
+      // paddleSubscriptionId, which would route this past the 409 and
+      // into a genuine (and here, doomed to fail) Paddle API call instead
+      // of testing what this test is actually for.
+      const fresh = await signup(app, `billing-admin-org-${suffix}@example.com`, password, `Billing Admin Org ${suffix}`);
+      const adminCookie = await inviteMember(fresh.sessionCookie, fresh.organizationId, `billing-admin-${suffix}@example.com`, "ADMIN");
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/billing/portal-session",
+        cookies: { [SESSION_COOKIE_NAME]: adminCookie },
+        payload: { organizationId: fresh.organizationId },
+      });
+      expect(response.statusCode).toBe(409);
+    });
+
+    it("returns 403 for a MEMBER — regression test for the billing portal authorization bypass", async () => {
+      const fresh = await signup(app, `billing-member-org-${suffix}@example.com`, password, `Billing Member Org ${suffix}`);
+      const memberCookie = await inviteMember(fresh.sessionCookie, fresh.organizationId, `billing-member-${suffix}@example.com`, "MEMBER");
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/billing/portal-session",
+        cookies: { [SESSION_COOKIE_NAME]: memberCookie },
+        payload: { organizationId: fresh.organizationId },
+      });
+      expect(response.statusCode).toBe(403);
     });
   });
 });

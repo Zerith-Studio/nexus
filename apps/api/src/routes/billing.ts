@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { env } from "../env.js";
 import { getPaddleClient } from "../lib/paddle-client.js";
 import { requireMembership } from "../lib/membership.js";
+import { hasAtLeastRole } from "../lib/roles.js";
 import { requireAuth } from "../plugins/auth-guard.js";
 
 const SUBSCRIPTION_EVENTS: ReadonlySet<string> = new Set([
@@ -148,7 +149,14 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.userId;
     if (!userId) throw ApiError.unauthorized();
 
-    await requireMembership(request, input.organizationId, userId);
+    // Billing management is an ADMIN-or-higher operation, same bar as
+    // knowledge-bases.ts's PATCH/DELETE routes — requireMembership alone
+    // only proves the caller belongs to the org, not that they're allowed
+    // to manage its subscription.
+    const role = await requireMembership(request, input.organizationId, userId);
+    if (!hasAtLeastRole(role, "ADMIN")) {
+      throw ApiError.forbidden("This action requires the ADMIN role or higher");
+    }
 
     const org = await withTenantTransaction(input.organizationId, (tx) => tx.organization.findUnique({ where: { id: input.organizationId } }));
     if (!org?.paddleCustomerId || !org.paddleSubscriptionId) {
