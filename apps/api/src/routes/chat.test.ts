@@ -9,6 +9,7 @@
 import { randomUUID } from "node:crypto";
 
 import { IdentityReranker } from "@raas/core";
+import * as db from "@raas/db";
 import { PrismaClient, prisma, withTenantTransaction } from "@raas/db";
 import { FakeEmbeddingProvider } from "@raas/providers";
 import { PLATFORM_EMBEDDING_DIM } from "@raas/shared";
@@ -178,13 +179,42 @@ describe("chat route", () => {
     // connection.
     const admin = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
 
-    async function hasIdleInTransactionSession(): Promise<boolean> {
+    // Scoped to exactly the Postgres backend PID(s) this one request's own
+    // withTenantTransaction calls actually used (captured below) — never
+    // "any raas_app session anywhere," which false-positives whenever an
+    // unrelated concurrently-running test file (a different process, a
+    // different connection pool, but the same raas_app username cluster-
+    // wide) happens to have its own genuinely-open transaction at the same
+    // instant. fileParallelism runs test files concurrently (see
+    // vitest.config.ts), so that collision is a real, observed failure
+    // mode here, not a hypothetical one.
+    async function hasIdleInTransactionSession(pids: number[]): Promise<boolean> {
+      if (pids.length === 0) return false;
       const rows = await admin.$queryRaw<Array<{ count: number }>>`
         SELECT count(*)::int AS count FROM pg_stat_activity
-        WHERE usename = 'raas_app' AND state = 'idle in transaction'
+        WHERE state = 'idle in transaction' AND pid = ANY(${pids}::int[])
       `;
       return rows[0]!.count > 0;
     }
+
+    // Wraps the real withTenantTransaction (still real Postgres, real RLS,
+    // real commit/rollback — nothing about its behavior changes) purely to
+    // observe which backend PID Prisma actually assigned each transaction,
+    // by asking that same connection for its own pg_backend_pid() from
+    // inside the transaction it's running. chat.ts imports
+    // withTenantTransaction directly from "@raas/db" (a named import), so
+    // spying via the module namespace here is what reaches those call
+    // sites — verified this actually intercepts cross-module before
+    // relying on it.
+    const capturedPids = new Set<number>();
+    const originalWithTenantTransaction = db.withTenantTransaction;
+    const txSpy = vi.spyOn(db, "withTenantTransaction").mockImplementation(async (orgId, callback) =>
+      originalWithTenantTransaction(orgId, async (tx) => {
+        const [row] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+        capturedPids.add(row!.pid);
+        return callback(tx);
+      }),
+    );
 
     let embedSawOpenTransaction = false;
     let rerankSawOpenTransaction = false;
@@ -201,14 +231,14 @@ describe("chat route", () => {
     const originalEmbed = FakeEmbeddingProvider.prototype.embed;
     const embedSpy = vi.spyOn(FakeEmbeddingProvider.prototype, "embed").mockImplementation(async function (this: FakeEmbeddingProvider, texts: string[]) {
       await new Promise((resolve) => setTimeout(resolve, 75));
-      embedSawOpenTransaction = await hasIdleInTransactionSession();
+      embedSawOpenTransaction = await hasIdleInTransactionSession(Array.from(capturedPids));
       return originalEmbed.call(this, texts);
     });
 
     const originalRerank = IdentityReranker.prototype.rerank;
     const rerankSpy = vi.spyOn(IdentityReranker.prototype, "rerank").mockImplementation(async function (this: IdentityReranker, params) {
       await new Promise((resolve) => setTimeout(resolve, 75));
-      rerankSawOpenTransaction = await hasIdleInTransactionSession();
+      rerankSawOpenTransaction = await hasIdleInTransactionSession(Array.from(capturedPids));
       return originalRerank.call(this, params);
     });
 
@@ -226,14 +256,20 @@ describe("chat route", () => {
       expect(embedSpy).toHaveBeenCalledOnce();
       expect(rerankSpy).toHaveBeenCalledOnce();
 
-      // The actual regression test: neither call ever saw a raas_app
-      // session sitting idle-in-transaction. Before this fix, the
-      // embedding call in particular ran INSIDE the same transaction as
-      // the KB/conversation/history lookup — this would have reliably
-      // observed one here.
+      // withTenantTransaction ran at least once (the KB/conversation/
+      // history lookup) before embed fired — if this is empty, the probe
+      // itself is broken, not the invariant it's checking.
+      expect(capturedPids.size).toBeGreaterThan(0);
+
+      // The actual regression test: neither call ever saw ITS OWN
+      // request's transaction connection sitting idle-in-transaction.
+      // Before this fix, the embedding call in particular ran INSIDE the
+      // same transaction as the KB/conversation/history lookup — this
+      // would have reliably observed one here.
       expect(embedSawOpenTransaction).toBe(false);
       expect(rerankSawOpenTransaction).toBe(false);
     } finally {
+      txSpy.mockRestore();
       embedSpy.mockRestore();
       rerankSpy.mockRestore();
       await admin.$disconnect();
