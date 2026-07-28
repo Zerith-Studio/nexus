@@ -35,7 +35,7 @@ export function SignupForm({ onPending }: { onPending: (pending: PendingSignupRe
       } else if (isApiError(error) && error.status === 422) {
         setServerError(error.details?.[0]?.message ?? error.message);
       } else {
-        toast.error("Something went wrong. Please try again.");
+        toast.error(isApiError(error) ? error.message : "Couldn't create your account. Check your connection and try again.");
       }
     }
   }

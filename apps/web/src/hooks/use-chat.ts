@@ -166,7 +166,7 @@ export function useChat({
         if (!controller.signal.aborted) {
           setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, pending: false } : m)));
           setStreamError(
-            isApiError(error) ? error.message : "Something went wrong. Please try again.",
+            isApiError(error) ? error.message : "Lost the connection while streaming a response. Check your network and retry.",
           );
         }
       } finally {

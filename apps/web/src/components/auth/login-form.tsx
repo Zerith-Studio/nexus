@@ -17,7 +17,7 @@ import { login } from "@/lib/api/auth";
 import { isApiError } from "@/lib/api-error";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  oauth_failed: "Something went wrong signing in with Google. Please try again.",
+  oauth_failed: "Couldn't sign you in with Google. Please try again.",
   oauth_email_unverified: "Your Google account's email isn't verified — please verify it with Google first.",
 };
 
@@ -35,7 +35,7 @@ export function LoginForm() {
   useEffect(() => {
     const error = searchParams.get("error");
     if (error) {
-      toast.error(OAUTH_ERROR_MESSAGES[error] ?? "Something went wrong. Please try again.");
+      toast.error(OAUTH_ERROR_MESSAGES[error] ?? "Couldn't sign you in with Google. Please try again.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only run once on mount
   }, []);
@@ -53,7 +53,7 @@ export function LoginForm() {
       } else if (isApiError(error) && error.status === 429) {
         setServerError("Too many attempts. Please wait a moment and try again.");
       } else {
-        toast.error("Something went wrong. Please try again.");
+        toast.error(isApiError(error) ? error.message : "Couldn't sign you in. Check your connection and try again.");
       }
     }
   }

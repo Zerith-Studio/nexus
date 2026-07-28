@@ -64,7 +64,7 @@ export function VerifyOtpForm({
       } else if (isApiError(err) && err.status === 404) {
         setError("This code has expired. Request a new one below.");
       } else {
-        toast.error("Something went wrong. Please try again.");
+        setError(isApiError(err) ? err.message : "Couldn't verify that code. Check your connection and try again.");
       }
     } finally {
       setIsVerifying(false);

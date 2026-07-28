@@ -15,5 +15,11 @@ export default function AppError({
     console.error(error);
   }, [error]);
 
-  return <ErrorState onRetry={reset} />;
+  return (
+    <ErrorState
+      title="This page hit a snag"
+      description="Nothing was lost — your data is untouched. Reloading usually fixes it."
+      onRetry={reset}
+    />
+  );
 }
