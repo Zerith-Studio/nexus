@@ -64,7 +64,18 @@ export default function ApiKeysPage() {
       </div>
 
       {apiKeys.isLoading ? (
-        <Skeleton className="h-40 w-full rounded-xl" />
+        <Card>
+          <div className="space-y-3 p-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between gap-4">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+            ))}
+          </div>
+        </Card>
       ) : keys.length === 0 ? (
         <EmptyState
           icon={KeyRoundIcon}

@@ -55,7 +55,9 @@ export function DocumentActivityTimeline({ documents }: { documents: Document[] 
                 <span className="text-muted-foreground">{meta.label}</span>
               </p>
               {doc.status === "FAILED" && doc.failureReason && (
-                <p className="mt-0.5 truncate text-xs text-destructive/80">{doc.failureReason}</p>
+                <p className="mt-0.5 truncate text-xs text-destructive/80" title={doc.failureReason}>
+                  {doc.failureReason}
+                </p>
               )}
             </div>
             <span className="shrink-0 text-xs text-muted-foreground">

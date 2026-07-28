@@ -11,6 +11,7 @@ import {
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useKnowledgeBase } from "@/hooks/use-knowledge-bases";
 import { useDocuments } from "@/hooks/use-documents";
 import { useSession } from "@/lib/session-context";
@@ -58,9 +59,7 @@ export function KnowledgeBaseCard({ kb }: { kb: KnowledgeBase }) {
               {stats.documentCount} {stats.documentCount === 1 ? "document" : "documents"}
             </span>
           ) : (
-            <span className="flex items-center gap-1">
-              <Loader2Icon className="size-3.5 animate-spin" /> Loading…
-            </span>
+            <Skeleton className="h-3.5 w-20" />
           )}
           {docs.length > 0 &&
             (failedCount > 0 ? (

@@ -65,7 +65,9 @@ export default function DashboardPage() {
       />
 
       <div className="space-y-8 px-6 py-6">
-        {!knowledgeBases.isLoading && !conversations.isLoading && (
+        {knowledgeBases.isLoading || conversations.isLoading ? (
+          <Skeleton className="h-[184px] rounded-xl" />
+        ) : (
           <GettingStartedChecklist
             organizationId={currentOrganization.id}
             hasKnowledgeBase={kbs.length > 0}

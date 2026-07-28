@@ -55,7 +55,16 @@ export function MembersTable({ organizationId }: { organizationId: string }) {
   }
 
   if (members.isLoading) {
-    return <Skeleton className="h-40 w-full" />;
+    return (
+      <div className="space-y-2 p-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-2.5">
+            <Skeleton className="size-7 shrink-0 rounded-full" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (members.isError) {
