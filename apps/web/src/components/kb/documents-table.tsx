@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -74,7 +75,19 @@ export function DocumentsTable({
   const deleteDocument = useDeleteDocument(knowledgeBaseId, organizationId);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | "all">("all");
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; fileName: string } | null>(null);
   const reducedMotion = useReducedMotion();
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    try {
+      await deleteDocument.mutateAsync(deleteTarget.id);
+      toast.success("Document deleted");
+      setDeleteTarget(null);
+    } catch {
+      toast.error("Couldn't delete document. Please try again.");
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -189,13 +202,7 @@ export function DocumentsTable({
                   )}
                   <DropdownMenuItem
                     variant="destructive"
-                    onSelect={() =>
-                      toast.promise(deleteDocument.mutateAsync(document.id), {
-                        loading: "Deleting…",
-                        success: "Document deleted",
-                        error: "Couldn't delete document",
-                      })
-                    }
+                    onSelect={() => setDeleteTarget({ id: document.id, fileName: document.fileName })}
                   >
                     <TrashIcon /> Delete
                   </DropdownMenuItem>
@@ -232,6 +239,22 @@ export function DocumentsTable({
           </Button>
         </motion.div>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete document"
+        description={
+          <>
+            This permanently deletes{" "}
+            <strong className="text-foreground">{deleteTarget?.fileName}</strong> and removes it from every future
+            chat response. This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        onConfirm={() => void confirmDelete()}
+        isPending={deleteDocument.isPending}
+      />
     </div>
   );
 }

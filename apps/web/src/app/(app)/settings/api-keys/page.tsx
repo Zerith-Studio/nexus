@@ -11,6 +11,7 @@ import { CreateApiKeyDialog } from "@/components/settings/create-api-key-dialog"
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -31,10 +32,22 @@ function keyStatus(key: { revokedAt: string | null; expiresAt: string | null }) 
 export default function ApiKeysPage() {
   const { currentOrganization } = useSession();
   const [createOpen, setCreateOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<{ id: string; name: string } | null>(null);
   const apiKeys = useApiKeys(currentOrganization.id);
   const revokeApiKey = useRevokeApiKey(currentOrganization.id);
 
   const keys = apiKeys.data?.data ?? [];
+
+  async function confirmRevoke() {
+    if (!revokeTarget) return;
+    try {
+      await revokeApiKey.mutateAsync(revokeTarget.id);
+      toast.success("Key revoked");
+      setRevokeTarget(null);
+    } catch {
+      toast.error("Couldn't revoke key. Please try again.");
+    }
+  }
 
   return (
     <div className="max-w-3xl">
@@ -93,14 +106,9 @@ export default function ApiKeysPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                           aria-label={`Revoke ${key.name}`}
-                          onClick={() =>
-                            toast.promise(revokeApiKey.mutateAsync(key.id), {
-                              loading: "Revoking…",
-                              success: "Key revoked",
-                              error: "Couldn't revoke key",
-                            })
-                          }
+                          onClick={() => setRevokeTarget({ id: key.id, name: key.name })}
                         >
                           <TrashIcon className="size-3.5" />
                         </Button>
@@ -115,6 +123,20 @@ export default function ApiKeysPage() {
       )}
 
       <CreateApiKeyDialog organizationId={currentOrganization.id} open={createOpen} onOpenChange={setCreateOpen} />
+      <ConfirmDialog
+        open={revokeTarget !== null}
+        onOpenChange={(open) => !open && setRevokeTarget(null)}
+        title="Revoke API key"
+        description={
+          <>
+            Any requests using <strong className="text-foreground">{revokeTarget?.name}</strong> will stop working
+            immediately. This cannot be undone.
+          </>
+        }
+        confirmLabel="Revoke key"
+        onConfirm={() => void confirmRevoke()}
+        isPending={revokeApiKey.isPending}
+      />
     </div>
   );
 }
