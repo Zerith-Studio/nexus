@@ -1,6 +1,8 @@
 "use client";
 
-import { CreditCardIcon, ExternalLinkIcon } from "lucide-react";
+import Link from "next/link";
+import { formatDistanceToNow } from "date-fns";
+import { CheckIcon, CreditCardIcon, ExternalLinkIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSession } from "@/lib/session-context";
@@ -17,6 +19,13 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "destructive" | "ou
   paused: "warning",
   canceled: "outline",
 };
+
+// Mirrors the Pro tier's own copy in lib/tiers.ts (kept as a plain local
+// constant rather than importing that module here — tiers.ts throws at
+// import time if the Paddle price env vars are unset, which is the right
+// failure mode for the pricing page but too fragile a dependency to pull
+// into a settings page that otherwise has nothing to do with checkout).
+const PRO_FEATURES = ["Multiple knowledge bases", "Higher document & request limits", "Full API access with scoped keys"];
 
 export default function BillingPage() {
   const { currentOrganization, user } = useSession();
@@ -56,17 +65,38 @@ export default function BillingPage() {
           {!canManage ? (
             <p className="text-sm text-muted-foreground">Only an owner or admin can manage billing for this organization.</p>
           ) : hasSubscription ? (
-            <Button variant="outline" onClick={() => void handleManageBilling()} disabled={createPortalSession.isPending}>
-              <CreditCardIcon /> Manage billing <ExternalLinkIcon className="size-3.5" />
-            </Button>
-          ) : (
             <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                You&apos;re on the Free plan. Upgrade to Pro for multiple knowledge bases, higher limits, and full API access.
-              </p>
-              <PaddleCheckoutButton organizationId={currentOrganization.id} email={user.email}>
-                Upgrade to Pro
-              </PaddleCheckoutButton>
+              <Button variant="outline" onClick={() => void handleManageBilling()} disabled={createPortalSession.isPending}>
+                <CreditCardIcon /> Manage billing <ExternalLinkIcon className="size-3.5" />
+              </Button>
+              {currentOrganization.subscriptionUpdatedAt && (
+                <p className="text-xs text-muted-foreground">
+                  Last synced {formatDistanceToNow(new Date(currentOrganization.subscriptionUpdatedAt), { addSuffix: true })}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3 rounded-lg border border-border bg-muted/40 p-4">
+              <div>
+                <p className="text-sm font-medium">You&apos;re on the Free plan</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">Upgrade to Pro to unlock:</p>
+              </div>
+              <ul className="space-y-1.5">
+                {PRO_FEATURES.map((feature) => (
+                  <li key={feature} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <CheckIcon className="size-3.5 shrink-0 text-success" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex items-center gap-3 pt-1">
+                <PaddleCheckoutButton organizationId={currentOrganization.id} email={user.email}>
+                  Upgrade to Pro
+                </PaddleCheckoutButton>
+                <Link href="/pricing" className="text-sm font-medium text-primary hover:text-primary/80">
+                  See all plans
+                </Link>
+              </div>
             </div>
           )}
         </CardContent>
