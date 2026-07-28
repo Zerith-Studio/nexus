@@ -1,7 +1,9 @@
 import { formatDistanceToNow } from "date-fns";
+import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2Icon, ClockIcon, Loader2Icon, TriangleAlertIcon, UploadIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { fadeUp, staggerContainer } from "@/lib/motion";
 import type { Document, DocumentStatus } from "@/lib/types";
 
 const STATUS_META: Record<DocumentStatus, { icon: typeof ClockIcon; label: string; tone: string }> = {
@@ -21,6 +23,7 @@ const MAX_ITEMS = 8;
  * timeline: the most recently status-changed documents, not a true audit trail.
  */
 export function DocumentActivityTimeline({ documents }: { documents: Document[] }) {
+  const reducedMotion = useReducedMotion();
   const items = [...documents]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .slice(0, MAX_ITEMS);
@@ -28,12 +31,17 @@ export function DocumentActivityTimeline({ documents }: { documents: Document[] 
   if (items.length === 0) return null;
 
   return (
-    <div className="space-y-3">
+    <motion.div
+      className="space-y-3"
+      initial={reducedMotion ? false : "hidden"}
+      animate="show"
+      variants={staggerContainer(0.03)}
+    >
       {items.map((doc) => {
         const meta = STATUS_META[doc.status];
         const Icon = meta.icon;
         return (
-          <div key={doc.id} className="flex items-start gap-3 text-sm">
+          <motion.div key={doc.id} className="flex items-start gap-3 text-sm" variants={fadeUp}>
             <Icon
               className={cn(
                 "mt-0.5 size-3.5 shrink-0",
@@ -53,9 +61,9 @@ export function DocumentActivityTimeline({ documents }: { documents: Document[] 
             <span className="shrink-0 text-xs text-muted-foreground">
               {formatDistanceToNow(new Date(doc.updatedAt), { addSuffix: true })}
             </span>
-          </div>
+          </motion.div>
         );
       })}
-    </div>
+    </motion.div>
   );
 }
