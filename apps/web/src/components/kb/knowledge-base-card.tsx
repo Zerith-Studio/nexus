@@ -29,7 +29,7 @@ export function KnowledgeBaseCard({ kb }: { kb: KnowledgeBase }) {
   ).length;
 
   return (
-    <Card interactive className="group py-5">
+    <Card interactive className="group h-full py-5">
       <CardHeader className="flex-row items-start justify-between gap-2">
         <div className="flex items-start gap-3 min-w-0">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
@@ -47,7 +47,7 @@ export function KnowledgeBaseCard({ kb }: { kb: KnowledgeBase }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex h-full flex-col">
         {kb.description && (
           <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">{kb.description}</p>
         )}
@@ -77,7 +77,7 @@ export function KnowledgeBaseCard({ kb }: { kb: KnowledgeBase }) {
               </span>
             ))}
         </div>
-        <div className="flex gap-2">
+        <div className="mt-auto flex gap-2 pt-4">
           <Button size="sm" variant="outline" asChild className="flex-1">
             <Link href={`/kb/${kb.id}`}>Manage</Link>
           </Button>

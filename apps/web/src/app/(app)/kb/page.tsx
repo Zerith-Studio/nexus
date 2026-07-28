@@ -109,7 +109,7 @@ export default function KnowledgeBasesPage() {
             variants={staggerContainer(0.04)}
           >
             {filtered.map((kb) => (
-              <motion.div key={kb.id} variants={fadeUp}>
+              <motion.div key={kb.id} variants={fadeUp} className="h-full">
                 <KnowledgeBaseCard kb={kb} />
               </motion.div>
             ))}

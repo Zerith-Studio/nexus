@@ -89,16 +89,26 @@ export default function DashboardPage() {
             </>
           ) : (
             <>
-              <div className="sm:col-span-2">
+              <motion.div
+                className="sm:col-span-2"
+                initial={reducedMotion ? false : "hidden"}
+                animate="show"
+                variants={fadeUp}
+              >
                 <UsageSummaryCard
                   requestCount={usage.data?.totals.requestCount ?? 0}
                   breakdown={usage.data?.breakdown ?? []}
                 />
-              </div>
-              <div className="flex flex-col divide-y divide-border rounded-xl border border-border">
+              </motion.div>
+              <motion.div
+                className="flex flex-col divide-y divide-border rounded-xl border border-border"
+                initial={reducedMotion ? false : "hidden"}
+                animate="show"
+                variants={fadeUp}
+              >
                 <StatCard label="Knowledge bases" value={String(kbs.length)} />
                 <StatCard label="Conversations" value={String(conversations.data?.data.length ?? 0)} />
-              </div>
+              </motion.div>
             </>
           )}
         </div>
@@ -144,7 +154,7 @@ export default function DashboardPage() {
               variants={staggerContainer()}
             >
               {kbs.slice(0, 6).map((kb) => (
-                <motion.div key={kb.id} variants={fadeUp}>
+                <motion.div key={kb.id} variants={fadeUp} className="h-full">
                   <KnowledgeBaseCard kb={kb} />
                 </motion.div>
               ))}
@@ -171,19 +181,21 @@ export default function DashboardPage() {
               description="Open a knowledge base and ask it a question to start your first conversation."
             />
           ) : (
-            <Card className="py-3">
-              <CardContent>
-                <div className="space-y-0.5">
-                  {recentConversations.map((conversation) => (
-                    <ConversationListItem
-                      key={conversation.id}
-                      conversation={conversation}
-                      href={`/kb/${conversation.knowledgeBaseId}/chat/${conversation.id}`}
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <motion.div initial={reducedMotion ? false : "hidden"} animate="show" variants={fadeUp}>
+              <Card className="py-3">
+                <CardContent>
+                  <div className="space-y-0.5">
+                    {recentConversations.map((conversation) => (
+                      <ConversationListItem
+                        key={conversation.id}
+                        conversation={conversation}
+                        href={`/kb/${conversation.knowledgeBaseId}/chat/${conversation.id}`}
+                      />
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
           )}
         </section>
       </div>
