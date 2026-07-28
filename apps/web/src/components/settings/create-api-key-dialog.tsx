@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createApiKeySchema, type CreateApiKeyInput } from "@raas/shared";
-import { CheckIcon, CopyIcon, Loader2Icon } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { CheckIcon, CopyIcon, Loader2Icon, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -18,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { fadeUp } from "@/lib/motion";
 import { useCreateApiKey } from "@/hooks/use-api-keys";
 
 export function CreateApiKeyDialog({
@@ -32,6 +34,7 @@ export function CreateApiKeyDialog({
   const createApiKey = useCreateApiKey(organizationId);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const reducedMotion = useReducedMotion();
 
   const {
     register,
@@ -75,23 +78,34 @@ export function CreateApiKeyDialog({
           <DialogTitle>{createdKey ? "Key created" : "New API key"}</DialogTitle>
           <DialogDescription>
             {createdKey
-              ? "Copy this key now — you won't be able to see it again."
+              ? "This is the only time you'll see the full key."
               : "Use this key to authenticate requests to the public API."}
           </DialogDescription>
         </DialogHeader>
 
         {createdKey ? (
-          <>
-            <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2">
-              <span className="flex-1 truncate font-mono text-xs">{createdKey}</span>
-              <Button variant="ghost" size="icon-sm" onClick={copyKey} aria-label={copied ? "Copied" : "Copy key"}>
-                {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-              </Button>
+          <motion.div
+            initial={reducedMotion ? false : "hidden"}
+            animate="show"
+            variants={fadeUp}
+          >
+            <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-warning">
+              <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
+              <p>Copy this key now and store it securely — for security, we can&apos;t show it to you again.</p>
             </div>
-            <DialogFooter>
-              <Button onClick={() => handleClose(false)}>Done</Button>
+            <div className="mt-3 overflow-x-auto rounded-md border border-border bg-muted px-3 py-2.5">
+              <span className="whitespace-nowrap font-mono text-sm">{createdKey}</span>
+            </div>
+            <Button onClick={copyKey} variant={copied ? "outline" : "default"} className="mt-3 w-full">
+              {copied ? <CheckIcon /> : <CopyIcon />}
+              {copied ? "Copied" : "Copy key"}
+            </Button>
+            <DialogFooter className="mt-4">
+              <Button variant="ghost" onClick={() => handleClose(false)}>
+                Done
+              </Button>
             </DialogFooter>
-          </>
+          </motion.div>
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             <div className="space-y-1.5">
