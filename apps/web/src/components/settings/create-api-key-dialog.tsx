@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fadeUp } from "@/lib/motion";
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCreateApiKey } from "@/hooks/use-api-keys";
 
 export function CreateApiKeyDialog({
@@ -33,7 +34,7 @@ export function CreateApiKeyDialog({
 }) {
   const createApiKey = useCreateApiKey(organizationId);
   const [createdKey, setCreatedKey] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy, reset: resetCopied } = useCopyToClipboard();
   const reducedMotion = useReducedMotion();
 
   const {
@@ -59,16 +60,9 @@ export function CreateApiKeyDialog({
     if (!nextOpen) {
       reset();
       setCreatedKey(null);
-      setCopied(false);
+      resetCopied();
     }
     onOpenChange(nextOpen);
-  }
-
-  async function copyKey() {
-    if (!createdKey) return;
-    await navigator.clipboard.writeText(createdKey);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   }
 
   return (
@@ -96,7 +90,11 @@ export function CreateApiKeyDialog({
             <div className="mt-3 overflow-x-auto rounded-md border border-border bg-muted px-3 py-2.5">
               <span className="whitespace-nowrap font-mono text-sm">{createdKey}</span>
             </div>
-            <Button onClick={copyKey} variant={copied ? "outline" : "default"} className="mt-3 w-full">
+            <Button
+              onClick={() => void copy(createdKey)}
+              variant={copied ? "outline" : "default"}
+              className="mt-3 w-full"
+            >
               {copied ? <CheckIcon /> : <CopyIcon />}
               {copied ? "Copied" : "Copy key"}
             </Button>

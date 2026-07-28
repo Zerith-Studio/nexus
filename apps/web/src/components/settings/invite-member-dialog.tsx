@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useInviteMember } from "@/hooks/use-organization-members";
 
 export function InviteMemberDialog({
@@ -38,7 +39,7 @@ export function InviteMemberDialog({
 }) {
   const inviteMember = useInviteMember(organizationId);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy, reset: resetCopied } = useCopyToClipboard();
 
   const {
     register,
@@ -65,16 +66,9 @@ export function InviteMemberDialog({
     if (!nextOpen) {
       reset();
       setInviteLink(null);
-      setCopied(false);
+      resetCopied();
     }
     onOpenChange(nextOpen);
-  }
-
-  async function copyLink() {
-    if (!inviteLink) return;
-    await navigator.clipboard.writeText(inviteLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   }
 
   return (
@@ -93,7 +87,12 @@ export function InviteMemberDialog({
           <>
             <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2">
               <span className="flex-1 truncate font-mono text-xs">{inviteLink}</span>
-              <Button variant="ghost" size="icon-sm" onClick={copyLink} aria-label={copied ? "Copied" : "Copy invite link"}>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => void copy(inviteLink)}
+                aria-label={copied ? "Copied" : "Copy invite link"}
+              >
                 {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
               </Button>
             </div>

@@ -1,11 +1,12 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { CheckIcon, CopyIcon, RotateCwIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { fadeUp } from "@/lib/motion";
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { CitationList } from "@/components/chat/citation-list";
 import { TypingIndicator } from "@/components/chat/typing-indicator";
@@ -26,15 +27,9 @@ function MessageBubbleImpl({
   isLast?: boolean;
   onRegenerate?: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const isUser = message.role === "USER";
   const reducedMotion = useReducedMotion();
-
-  async function handleCopy() {
-    await navigator.clipboard.writeText(message.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
 
   if (isUser) {
     return (
@@ -85,7 +80,7 @@ function MessageBubbleImpl({
                   variant="ghost"
                   size="icon-sm"
                   className="size-6 text-muted-foreground"
-                  onClick={handleCopy}
+                  onClick={() => void copy(message.content)}
                   aria-label={copied ? "Copied" : "Copy message"}
                 >
                   {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}

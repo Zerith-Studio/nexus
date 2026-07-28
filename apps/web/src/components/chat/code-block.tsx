@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 
 function extractText(node: React.ReactNode): string {
   if (typeof node === "string") return node;
@@ -24,17 +24,11 @@ function extractText(node: React.ReactNode): string {
  * that tree rather than assuming `children` is a plain string.
  */
 export function CodeBlock({ className, children, ...props }: React.ComponentProps<"pre">) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
 
   const codeElement = React.isValidElement<{ className?: string }>(children) ? children : null;
   const languageMatch = /language-(\w+)/.exec(codeElement?.props.className ?? "");
   const language = languageMatch?.[1] ?? "text";
-
-  async function handleCopy() {
-    await navigator.clipboard.writeText(extractText(children));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }
 
   return (
     <div className="mb-3 overflow-hidden rounded-lg border border-border last:mb-0">
@@ -42,7 +36,7 @@ export function CodeBlock({ className, children, ...props }: React.ComponentProp
         <span className="font-mono text-caption text-muted-foreground">{language}</span>
         <button
           type="button"
-          onClick={handleCopy}
+          onClick={() => void copy(extractText(children))}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-caption text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
