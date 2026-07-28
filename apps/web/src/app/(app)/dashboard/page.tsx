@@ -181,6 +181,13 @@ export default function DashboardPage() {
               icon={MessagesSquareIcon}
               title="No conversations yet"
               description="Open a knowledge base and ask it a question to start your first conversation."
+              action={
+                <Button size="sm" asChild>
+                  <Link href={kbs[0] ? `/kb/${kbs[0].id}/chat` : "/kb"}>
+                    {kbs[0] ? "Start chatting" : "Create a knowledge base"}
+                  </Link>
+                </Button>
+              }
             />
           ) : (
             <motion.div initial={reducedMotion ? false : "hidden"} animate="show" variants={fadeUp}>
