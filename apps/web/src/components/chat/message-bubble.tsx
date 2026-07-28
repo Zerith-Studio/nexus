@@ -1,9 +1,11 @@
 "use client";
 
 import { memo, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { CheckIcon, CopyIcon, RotateCwIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { fadeUp } from "@/lib/motion";
 import { MarkdownContent } from "@/components/chat/markdown-content";
 import { CitationList } from "@/components/chat/citation-list";
 import { TypingIndicator } from "@/components/chat/typing-indicator";
@@ -26,6 +28,7 @@ function MessageBubbleImpl({
 }) {
   const [copied, setCopied] = useState(false);
   const isUser = message.role === "USER";
+  const reducedMotion = useReducedMotion();
 
   async function handleCopy() {
     await navigator.clipboard.writeText(message.content);
@@ -45,7 +48,12 @@ function MessageBubbleImpl({
   const isStreamingText = message.pending && message.content.length > 0;
 
   return (
-    <div className="group flex justify-start">
+    <motion.div
+      className="group flex justify-start"
+      initial={reducedMotion ? false : "hidden"}
+      animate="show"
+      variants={fadeUp}
+    >
       <div className="max-w-[68ch] text-foreground">
         {showTyping ? (
           <TypingIndicator />
@@ -104,7 +112,7 @@ function MessageBubbleImpl({
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 

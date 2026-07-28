@@ -2,9 +2,11 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRightIcon, FileTextIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { duration, ease, transition } from "@/lib/motion";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Citation } from "@/lib/types";
 
@@ -89,29 +91,38 @@ export function InlineCitation({
   knowledgeBaseId: string;
 }) {
   const { open, setOpen, openNow, closeSoon } = useHoverPopover();
+  const reducedMotion = useReducedMotion();
   const deduped = dedupeCitations(citations);
   const index = deduped.findIndex((c) => c.refId === refId);
   if (index === -1) return null;
   const citation = deduped[index]!;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        onMouseEnter={openNow}
-        onMouseLeave={closeSoon}
-        className="mx-0.5 inline-flex h-[1.1em] min-w-[1.1em] -translate-y-[0.35em] items-center justify-center rounded-xs border border-border/70 px-[3px] align-top text-[0.65em] leading-none font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
-      >
-        {index + 1}
-      </PopoverTrigger>
-      <PopoverContent className="w-80 text-sm" side="top" align="start" onMouseEnter={openNow} onMouseLeave={closeSoon}>
-        <CitationPopoverContent
-          index={index}
-          citation={citation}
-          fileName={fileNames?.[citation.documentId]}
-          knowledgeBaseId={knowledgeBaseId}
-        />
-      </PopoverContent>
-    </Popover>
+    <motion.span
+      key={citation.refId}
+      className="inline-block"
+      initial={reducedMotion ? false : { opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={transition(duration.base, ease.out)}
+    >
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          onMouseEnter={openNow}
+          onMouseLeave={closeSoon}
+          className="mx-0.5 inline-flex h-[1.1em] min-w-[1.1em] -translate-y-[0.35em] items-center justify-center rounded-xs border border-border/70 px-[3px] align-top text-[0.65em] leading-none font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+        >
+          {index + 1}
+        </PopoverTrigger>
+        <PopoverContent className="w-80 text-sm" side="top" align="start" onMouseEnter={openNow} onMouseLeave={closeSoon}>
+          <CitationPopoverContent
+            index={index}
+            citation={citation}
+            fileName={fileNames?.[citation.documentId]}
+            knowledgeBaseId={knowledgeBaseId}
+          />
+        </PopoverContent>
+      </Popover>
+    </motion.span>
   );
 }
 
