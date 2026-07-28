@@ -94,7 +94,7 @@ export default function AiProviderPage() {
 
   if (llmConfig.isLoading) {
     return (
-      <div className="max-w-2xl space-y-4">
+      <div className="max-w-3xl space-y-4">
         <Skeleton className="h-32 rounded-xl" />
         <Skeleton className="h-64 rounded-xl" />
       </div>
@@ -102,7 +102,7 @@ export default function AiProviderPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-3xl space-y-6">
       <Card className="py-5">
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle className="text-base">Current provider</CardTitle>

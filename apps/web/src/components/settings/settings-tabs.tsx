@@ -27,7 +27,7 @@ export function SettingsTabs() {
               key={tab.href}
               href={tab.href}
               className={cn(
-                "shrink-0 border-b-2 py-3 text-sm font-medium transition-colors",
+                "shrink-0 rounded-sm border-b-2 py-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                 active
                   ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
