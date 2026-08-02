@@ -1,8 +1,11 @@
-import { ApiError, cursorPaginationSchema, parseOrThrow } from "@raas/shared";
+import { embedQuery, searchSimilarChunks } from "@raas/core";
+import { ApiError, cursorPaginationSchema, knowledgeBaseQuerySchema, parseOrThrow } from "@raas/shared";
 import { withTenantTransaction } from "@raas/db";
 import type { FastifyInstance } from "fastify";
 
 import { paginate } from "../lib/pagination.js";
+import { getBudgetGuardedEmbeddingProvider } from "../lib/embedding-provider.js";
+import { getReranker } from "../lib/reranker.js";
 import { requireApiKeyAuth } from "../plugins/api-key-auth.js";
 
 /**
@@ -53,5 +56,63 @@ export async function v1Routes(app: FastifyInstance): Promise<void> {
     }
 
     reply.send(paginate(documents, input.limit));
+  });
+
+  /**
+   * Retrieval-only public API. It deliberately returns passages and
+   * server-resolved document metadata, not an LLM-generated answer. This
+   * lets downstream agents synthesize in their own security context while
+   * keeping tenant isolation, embedding compatibility, vector search and
+   * reranking inside Nexus.
+   */
+  app.post("/v1/knowledge-bases/:id/query", { preHandler: requireApiKeyAuth }, async (request, reply) => {
+    const { id: knowledgeBaseId } = request.params as { id: string };
+    const input = parseOrThrow(knowledgeBaseQuerySchema, request.body);
+    const organizationId = request.apiKeyOrganizationId;
+    if (!organizationId) throw ApiError.unauthorized();
+
+    const knowledgeBaseExists = await withTenantTransaction(organizationId, async (tx) => {
+      const knowledgeBase = await tx.knowledgeBase.findUnique({ where: { id: knowledgeBaseId } });
+      return knowledgeBase?.status === "ACTIVE";
+    });
+    if (!knowledgeBaseExists) throw ApiError.notFound("Knowledge base not found");
+
+    // Third-party embedding/reranking calls stay outside database
+    // transactions, matching the production chat pipeline.
+    const queryEmbedding = await embedQuery(await getBudgetGuardedEmbeddingProvider(organizationId), input.query);
+    const candidates = await withTenantTransaction(organizationId, (tx) =>
+      searchSimilarChunks(tx, { organizationId, knowledgeBaseId, queryEmbedding, limit: input.topK }),
+    );
+    const ranked = await getReranker().rerank({ query: input.query, chunks: candidates });
+
+    const documentIds = [...new Set(ranked.map((chunk) => chunk.documentId))];
+    const documents = await withTenantTransaction(organizationId, (tx) =>
+      tx.document.findMany({
+        where: { id: { in: documentIds }, knowledgeBaseId, status: "READY" },
+        select: { id: true, fileName: true, mimeType: true, processedAt: true },
+      }),
+    );
+    const documentsById = new Map(documents.map((document) => [document.id, document]));
+
+    reply.send({
+      query: input.query,
+      knowledgeBaseId,
+      results: ranked.flatMap((chunk, index) => {
+        const document = documentsById.get(chunk.documentId);
+        if (!document) return [];
+        return [{
+          refId: `c${index + 1}`,
+          chunkId: chunk.chunkId,
+          documentId: chunk.documentId,
+          documentName: document.fileName,
+          mimeType: document.mimeType,
+          pageNumber: chunk.pageNumber,
+          chunkIndex: chunk.chunkIndex,
+          score: chunk.score,
+          content: chunk.content,
+          processedAt: document.processedAt,
+        }];
+      }),
+    });
   });
 }
